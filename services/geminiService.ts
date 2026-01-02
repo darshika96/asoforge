@@ -227,7 +227,7 @@ GENERATE A TYPOGRAPHY SYSTEM (2 FONTS):
 2. **Secondary / Text Font**: Usage: Body text, UI labels. Personality: Neutral, optimized for screens.
 
 TYPOGRAPHY RULES:
-1. **Google Fonts Only**: Must be widely supported.
+1. **Google Fonts Only**: STRICTLY use only free, commercial-use friendly Google Fonts (e.g. Inter, Roboto, Montserrat, Poppins, Lato). Do NOT use Adobe Fonts or paid fonts.
 2. **Pairing Logic**: Contrast in structure (e.g. Serif + Sans, or Geometric Sans + Humanist Sans).
 
 CRITICAL OUTPUT RULES:
@@ -483,8 +483,9 @@ export const enhancePrivacyPolicy = async (currentText: string, appName: string,
   return text.replace(/^```markdown\n?/, '').replace(/\n?```$/, '').trim();
 };
 
-export const generateBrandIdentity = async (analysis: AnalysisResult, name: string): Promise<BrandIdentity> => {
-  const prompt = `App: ${name}. Tone: ${analysis.tone}. Generate a high-end tetradic brand identity (colors, typography).`;
+export const generateBrandIdentity = async (analysis: AnalysisResult, name: string, guidance?: string): Promise<BrandIdentity> => {
+  const guidanceInstruction = guidance ? `\nUSER GUIDANCE: The user specifically requested: "${guidance}". YOU MUST INCORPORATE THIS INTO THE COLOR PALETTE/IDENTITY.` : "";
+  const prompt = `App: ${name}. Tone: ${analysis.tone}. ${guidanceInstruction} Generate a high-end tetradic brand identity (colors, typography).`;
   const response = await retry(async () => ai.models.generateContent({
     model: TEXT_MODEL,
     contents: prompt,
@@ -614,18 +615,28 @@ export const generateImagePrompt = async (
   appName: string,
   assetType: 'ICON' | 'BANNER',
   brandIdentity?: BrandIdentity | null,
-  styleReferenceDescription?: string
+  styleReferenceDescription?: string,
+  userSubject?: string,
+  backgroundColorOverride?: string,
+  subjectColorOverride?: string
 ): Promise<string> => {
   const isBanner = assetType === 'BANNER';
   let colorContext = "";
+
   if (brandIdentity) {
-    colorContext = `STRICT COLOR PALETTE: [${brandIdentity.colors.primary1}, ${brandIdentity.colors.primary2}, ${brandIdentity.colors.accent1}, ${brandIdentity.colors.accent2}, ${brandIdentity.colors.highlight_neon}]. USE A PLAIN SOLID COLOR OR EXTREMELY SUBTLE GRADIENT FOR THE BACKGROUND.`;
+    if (backgroundColorOverride && subjectColorOverride) {
+      colorContext = `STRICT COLOR MAPPING: Background MUST be exactly ${backgroundColorOverride}. The main subject/object MUST be exactly ${subjectColorOverride}. Do not use other colors significantly.`;
+    } else {
+      colorContext = `STRICT COLOR PALETTE: [${brandIdentity.colors.primary1}, ${brandIdentity.colors.primary2}, ${brandIdentity.colors.accent1}, ${brandIdentity.colors.accent2}, ${brandIdentity.colors.highlight_neon}]. USE A PLAIN SOLID COLOR OR EXTREMELY SUBTLE GRADIENT FOR THE BACKGROUND.`;
+    }
   }
 
   /**
    * Brainstorms a creative subject (mascot, shape, or symbol) based on the app's brand and category.
    */
   const brainstormIconSubject = async (analysis: AnalysisResult, appName: string, iconStyle: string): Promise<string> => {
+    if (userSubject) return userSubject; // Use user's subject if provided
+
     const isMascot = iconStyle === 'Modern Mascot';
     const isAbstract = iconStyle === 'Abstract';
 
@@ -663,29 +674,39 @@ Rules:
   };
   let styleInstruction = "";
   if (!isBanner) {
-    switch (style) {
-      case 'Modern Mascot':
-        const chosenMascot = await brainstormIconSubject(analysis, appName, style);
-        styleInstruction = `STYLE: Cute modern mascot of a ${chosenMascot}. extreme close-up face view, character has a zoomed-in look. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. large circular eyes with spark highlights, tiny mouth and nose, simplified geometry. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish, friendly playful emotion. designed for high-visibility at small sizes.`;
-        break;
-      case '3D Geometric':
-      case 'Fun 3D Shapes':
-      case '3D Shapes':
-        const chosenShape = await brainstormIconSubject(analysis, appName, style);
-        styleInstruction = `STYLE: Premium 3D render of a ${chosenShape}. extreme close-up view, zoomed-in look. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish, high-end feel. designed for high-visibility at small sizes.`;
-        break;
-      case '3D Letter':
-        styleInstruction = `STYLE: Sculptural 3D render of a letter "${appName.charAt(0).toUpperCase()}". extreme close-up and zoomed-in look, letterform is oversized. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. bold and authoritative but friendly. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish. designed for high-visibility at small sizes.`;
-        break;
-      case 'Modern Minimalist':
-        styleInstruction = `STYLE: CLEAN HIGH-IMPACT SWISS VECTOR. HUGE simplified symbol for ${analysis.category}. friendly and cute. flat with soft glow.`;
-        break;
-      case 'Abstract':
-        const chosenAbstract = await brainstormIconSubject(analysis, appName, style);
-        styleInstruction = `STYLE: An abstract render made from a ${chosenAbstract}. extreme close-up composition, zoomed-in look, oversized shape. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. high-tech and friendly. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish.`;
-        break;
-      default:
-        styleInstruction = `STYLE: MODERN APP ICON. central logo mark.`;
+    if (userSubject) {
+      // Enhanced instruction for user provided subject
+      styleInstruction = `STYLE: Premium icon of a ${userSubject}. extreme close-up view. Soft 3D gradient style (flat-3D hybrid), simplified geometry. Single dominant color with tonal gradients, no outlines, clean vector finish. designed for high-visibility at small sizes.`;
+
+      // Add specific style nuance if a known style is selected
+      if (style === 'Modern Mascot') styleInstruction += " Friendly, rounded, cute features.";
+      else if (style === '3D Shapes' || style === '3D Geometric') styleInstruction += " Abstract, geometric, high-end 3D render.";
+      else if (style === 'Modern Minimalist') styleInstruction = `STYLE: CLEAN HIGH-IMPACT SWISS VECTOR. Simplified symbol of a ${userSubject}. flat with soft glow.`;
+    } else {
+      switch (style) {
+        case 'Modern Mascot':
+          const chosenMascot = await brainstormIconSubject(analysis, appName, style);
+          styleInstruction = `STYLE: Cute modern mascot of a ${chosenMascot}. extreme close-up face view, character has a zoomed-in look. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. large circular eyes with spark highlights, tiny mouth and nose, simplified geometry. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish, friendly playful emotion. designed for high-visibility at small sizes.`;
+          break;
+        case '3D Geometric':
+        case 'Fun 3D Shapes':
+        case '3D Shapes':
+          const chosenShape = await brainstormIconSubject(analysis, appName, style);
+          styleInstruction = `STYLE: Premium 3D render of a ${chosenShape}. extreme close-up view, zoomed-in look. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish, high-end feel. designed for high-visibility at small sizes.`;
+          break;
+        case '3D Letter':
+          styleInstruction = `STYLE: Sculptural 3D render of a letter "${appName.charAt(0).toUpperCase()}". extreme close-up and zoomed-in look, letterform is oversized. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. bold and authoritative but friendly. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish. designed for high-visibility at small sizes.`;
+          break;
+        case 'Modern Minimalist':
+          styleInstruction = `STYLE: CLEAN HIGH-IMPACT SWISS VECTOR. HUGE simplified symbol for ${analysis.category}. friendly and cute. flat with soft glow.`;
+          break;
+        case 'Abstract':
+          const chosenAbstract = await brainstormIconSubject(analysis, appName, style);
+          styleInstruction = `STYLE: An abstract render made from a ${chosenAbstract}. extreme close-up composition, zoomed-in look, oversized shape. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. high-tech and friendly. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish.`;
+          break;
+        default:
+          styleInstruction = `STYLE: MODERN APP ICON. central logo mark.`;
+      }
     }
   } else {
     styleInstruction = `STYLE: STORE TILES. wide composition. use brand colors ${brandIdentity?.colors.primary1}, ${brandIdentity?.colors.primary2}. negative space.`;

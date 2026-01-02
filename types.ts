@@ -112,6 +112,9 @@ export interface ScreenshotData {
 
   // Positioning data stored PER template
   positions: Record<ScreenshotTemplate, ImagePosition>;
+
+  // Style Overrides
+  headingFont?: string;
 }
 
 export interface StoreGraphicsPreferences {

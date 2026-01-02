@@ -57,13 +57,31 @@ const App: React.FC = () => {
     };
   };
 
+  // Migration helper: Ensure screenshots have headingFont property
+  const migrateScreenshots = (project: ProjectState): ProjectState => {
+    const migrateScreenshotArray = (shots: ScreenshotData[]): ScreenshotData[] => {
+      return shots.map(shot => ({
+        ...shot,
+        // Add headingFont if missing (optional field, so undefined is fine)
+        headingFont: shot.headingFont || undefined
+      }));
+    };
+
+    return {
+      ...project,
+      screenshots: migrateScreenshotArray(project.screenshots || []),
+      smallTiles: migrateScreenshotArray(project.smallTiles || []),
+      marquees: migrateScreenshotArray(project.marquees || [])
+    };
+  };
+
   // Load projects from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       const data = await projectService.getAllProjects();
-      // Migrate old projects to new color structure
-      const migratedData = data.map(migrateBrandIdentity);
+      // Migrate old projects to new structure
+      const migratedData = data.map(p => migrateScreenshots(migrateBrandIdentity(p)));
       setProjects(migratedData);
       setIsLoading(false);
     };

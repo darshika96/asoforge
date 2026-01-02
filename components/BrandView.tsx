@@ -27,6 +27,13 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
     const [styleRefDescription, setStyleRefDescription] = useState<string>('');
     const [isAnalyzingStyle, setIsAnalyzingStyle] = useState(false);
 
+    // New Control State
+    const [brandGuidance, setBrandGuidance] = useState('');
+    const [isEditingColors, setIsEditingColors] = useState(false);
+    const [iconSubject, setIconSubject] = useState('');
+    const [bgColorOverride, setBgColorOverride] = useState('');
+    const [subjectColorOverride, setSubjectColorOverride] = useState('');
+
     // Asset State
     const [iconVariants, setIconVariants] = useState<string[]>([]);
     const [selectedIconIndex, setSelectedIconIndex] = useState<number | null>(null);
@@ -53,18 +60,55 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
         }
     }, [savedAssets]);
 
+    // Initialize color overrides when identity changes
+    useEffect(() => {
+        if (identity) {
+            // Smart Defaults: Primary 1 for BG, Accent 1 for Subject
+            if (!bgColorOverride) setBgColorOverride(identity.colors.primary1 || '#000000');
+            if (!subjectColorOverride) setSubjectColorOverride(identity.colors.accent1 || '#ffffff');
+        }
+    }, [identity]);
+
     // --- Logic: Identity Generation ---
     const handleGenerateIdentity = async () => {
         setIsGeneratingIdentity(true);
         setError(null);
         try {
-            const result = await generateBrandIdentity(analysis, selectedName.name);
+            const result = await generateBrandIdentity(analysis, selectedName.name, brandGuidance);
             setIdentity(result);
+            // Reset overrides to new defaults
+            setBgColorOverride(result.colors.primary1 || '#000000');
+            setSubjectColorOverride(result.colors.accent1 || '#ffffff');
         } catch (e: any) {
             setError(e.message || "Failed to generate identity");
         } finally {
             setIsGeneratingIdentity(false);
         }
+    };
+
+    const handleColorChange = (key: string, value: string) => {
+        if (!identity) return;
+        setIdentity({
+            ...identity,
+            colors: {
+                ...identity.colors,
+                [key]: value
+            }
+        });
+    };
+
+    // Helper to get all brand colors as flat array for quick-picker
+    const getBrandColors = () => {
+        if (!identity) return [];
+        return [
+            identity.colors.primary1,
+            identity.colors.primary2,
+            identity.colors.accent1,
+            identity.colors.accent2,
+            identity.colors.neutral_white,
+            identity.colors.neutral_black,
+            identity.colors.highlight_neon
+        ].filter(Boolean) as string[];
     };
 
     // --- Logic: Prompt Optimization ---
@@ -73,7 +117,17 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
         setError(null);
         try {
             // We pass the analyzed style description if it exists
-            const prompt = await generateImagePrompt(selectedStyle, analysis, selectedName.name, 'ICON', identity, styleRefDescription);
+            const prompt = await generateImagePrompt(
+                selectedStyle,
+                analysis,
+                selectedName.name,
+                'ICON',
+                identity,
+                styleRefDescription,
+                iconSubject,
+                bgColorOverride,
+                subjectColorOverride
+            );
             setUnifiedPrompt(prompt);
         } catch (e: any) {
             setError(e.message);
@@ -261,7 +315,7 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
                         Unified Asset <span className="text-primary">Forge</span>
                     </h1>
                     <p className="text-text-muted text-lg max-w-2xl">
-                        Create a cohesive brand identity. Icons use **Accent colors** for the subject and **Primary colors** for the background for maximum visibility.
+                        Create a cohesive brand identity. Icons use **Accent colors** for the subject and **Primary colors** for the background.
                     </p>
                 </div>
 
@@ -281,14 +335,23 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
                             </div>
                             <div className="flex gap-2">
                                 {identity && (
-                                    <button
-                                        onClick={handleGenerateIdentity}
-                                        disabled={isGeneratingIdentity}
-                                        className="h-8 px-3 rounded-lg border border-border-dark bg-surface-darker hover:bg-surface-light text-white text-xs font-bold transition-all flex items-center gap-2 group/regen"
-                                    >
-                                        <span className={`material-symbols-outlined text-[16px] group-hover/regen:rotate-180 transition-transform duration-500 ${isGeneratingIdentity ? 'animate-spin' : ''}`}>refresh</span>
-                                        Regenerate
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={() => setIsEditingColors(!isEditingColors)}
+                                            className={`h-8 px-3 rounded-lg border border-border-dark hover:bg-surface-light text-xs font-bold transition-all flex items-center gap-2 ${isEditingColors ? 'bg-primary text-black border-primary' : 'bg-surface-darker text-white'}`}
+                                        >
+                                            <span className="material-symbols-outlined text-[16px]">edit</span>
+                                            {isEditingColors ? 'Done Editing' : 'Edit Colors'}
+                                        </button>
+                                        <button
+                                            onClick={handleGenerateIdentity}
+                                            disabled={isGeneratingIdentity}
+                                            className="h-8 px-3 rounded-lg border border-border-dark bg-surface-darker hover:bg-surface-light text-white text-xs font-bold transition-all flex items-center gap-2 group/regen"
+                                        >
+                                            <span className={`material-symbols-outlined text-[16px] group-hover/regen:rotate-180 transition-transform duration-500 ${isGeneratingIdentity ? 'animate-spin' : ''}`}>refresh</span>
+                                            Regenerate
+                                        </button>
+                                    </>
                                 )}
                                 {!identity && (
                                     <button
@@ -312,6 +375,24 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
                             </div>
                         </div>
 
+                        {/* Brand Guidance Input */}
+                        {!identity && (
+                            <div className="mb-6">
+                                <label className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-2 block">Brand Guidance (Optional)</label>
+                                <div className="relative">
+                                    <textarea
+                                        value={brandGuidance}
+                                        onChange={(e) => setBrandGuidance(e.target.value)}
+                                        placeholder="e.g. 'I need a cybernetic green theme' or 'Warm pastels like a bakery'"
+                                        className="w-full bg-surface-darker border border-border-dark rounded-xl p-3 text-sm text-gray-300 focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none h-20"
+                                    />
+                                    <div className="absolute bottom-2 right-2 text-[10px] text-gray-500">
+                                        Describe your colors/vibe
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {identity ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="bg-surface-darker/50 rounded-xl p-4 border border-border-dark col-span-1 md:col-span-2 relative overflow-hidden">
@@ -320,15 +401,32 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
                                         {/* Primaries */}
                                         <div className="flex items-center gap-2">
                                             {[
-                                                { label: 'Primary 1', color: identity.colors?.primary1 || identity.colors?.primary },
-                                                { label: 'Primary 2', color: identity.colors?.primary2 || identity.colors?.secondary } // Fallback for old data
+                                                { id: 'primary1', label: 'Primary 1', color: identity.colors?.primary1 || identity.colors?.primary },
+                                                { id: 'primary2', label: 'Primary 2', color: identity.colors?.primary2 || identity.colors?.secondary }
                                             ].map((c, idx) => c.color ? (
-                                                <div key={`p-${idx}`} className="relative group/color cursor-pointer" title={`${c.label}: ${c.color}`} onClick={() => navigator.clipboard.writeText(c.color || '')}>
-                                                    <div className="size-10 rounded-full border-2 border-white/10 shadow-lg group-hover/color:scale-110 transition-transform" style={{ backgroundColor: c.color || '#000' }}></div>
-                                                    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] text-white px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none flex flex-col items-center">
-                                                        <span className="font-bold">{c.label}</span>
-                                                        <span className="opacity-70 font-mono">{c.color}</span>
-                                                    </div>
+                                                <div key={`p-${idx}`} className="relative group/color">
+                                                    {isEditingColors ? (
+                                                        <div className="flex flex-col gap-1 items-center">
+                                                            <div className="size-10 rounded-full border-2 border-white/10 shadow-lg relative overflow-hidden">
+                                                                <input type="color" className="absolute -inset-1 w-[150%] h-[150%] cursor-pointer p-0 border-0" value={c.color} onChange={(e) => handleColorChange(c.id, e.target.value)} />
+                                                            </div>
+                                                            <input
+                                                                type="text"
+                                                                value={c.color}
+                                                                onChange={(e) => handleColorChange(c.id, e.target.value)}
+                                                                className="text-[10px] w-14 bg-black/50 border border-white/20 rounded text-center text-white"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="relative group/color cursor-pointer" title={`Click to copy ${c.label}`} onClick={() => navigator.clipboard.writeText(c.color || '')}>
+                                                            <div className="size-10 rounded-full border-2 border-white/10 shadow-lg group-hover/color:scale-110 transition-transform" style={{ backgroundColor: c.color || '#000' }}></div>
+                                                            <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] text-white px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none flex flex-col items-center">
+                                                                <span className="font-bold">{c.label}</span>
+                                                                <span className="opacity-70 font-mono">{c.color}</span>
+                                                                <span className="text-[9px] text-primary mt-0.5">(Click to Copy)</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : null)}
                                         </div>
@@ -336,44 +434,96 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
                                         {/* Accents */}
                                         <div className="flex items-center gap-2">
                                             {[
-                                                { label: 'Accent 1', color: identity.colors?.accent1 || identity.colors?.accent },
-                                                { label: 'Accent 2', color: identity.colors?.accent2 }
+                                                { id: 'accent1', label: 'Accent 1', color: identity.colors?.accent1 || identity.colors?.accent },
+                                                { id: 'accent2', label: 'Accent 2', color: identity.colors?.accent2 }
                                             ].map((c, idx) => c.color ? (
-                                                <div key={`a-${idx}`} className="relative group/color cursor-pointer" title={`${c.label}: ${c.color}`} onClick={() => navigator.clipboard.writeText(c.color || '')}>
-                                                    <div className="size-8 rounded-lg border border-white/10 shadow-lg group-hover/color:scale-110 transition-transform rotate-45" style={{ backgroundColor: c.color || '#000' }}></div>
-                                                    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] text-white px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none flex flex-col items-center">
-                                                        <span className="font-bold">{c.label}</span>
-                                                        <span className="opacity-70 font-mono">{c.color}</span>
-                                                    </div>
+                                                <div key={`a-${idx}`} className="relative group/color">
+                                                    {isEditingColors ? (
+                                                        <div className="flex flex-col gap-1 items-center">
+                                                            <div className="size-8 rounded-lg border border-white/10 shadow-lg relative overflow-hidden rotate-45 mb-2 mt-1">
+                                                                <input type="color" className="absolute -inset-2 w-[200%] h-[200%] cursor-pointer p-0 border-0 -rotate-45" value={c.color} onChange={(e) => handleColorChange(c.id, e.target.value)} />
+                                                            </div>
+                                                            <input
+                                                                type="text"
+                                                                value={c.color}
+                                                                onChange={(e) => handleColorChange(c.id, e.target.value)}
+                                                                className="text-[10px] w-14 bg-black/50 border border-white/20 rounded text-center text-white"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="relative group/color cursor-pointer" title={`Click to copy ${c.label}`} onClick={() => navigator.clipboard.writeText(c.color || '')}>
+                                                            <div className="size-8 rounded-lg border border-white/10 shadow-lg group-hover/color:scale-110 transition-transform rotate-45" style={{ backgroundColor: c.color || '#000' }}></div>
+                                                            <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] text-white px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none flex flex-col items-center">
+                                                                <span className="font-bold">{c.label}</span>
+                                                                <span className="opacity-70 font-mono">{c.color}</span>
+                                                                <span className="text-[9px] text-primary mt-0.5">(Click to Copy)</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : null)}
                                         </div>
-                                        {/* Neutrals (Only show if new data exists) */}
+                                        {/* Neutrals */}
                                         {(identity.colors?.neutral_white || identity.colors?.neutral_black) && (
                                             <>
                                                 <div className="w-px h-8 bg-white/10 self-center mx-1"></div>
                                                 <div className="flex items-center gap-2">
                                                     {[
-                                                        { label: 'White', color: identity.colors?.neutral_white },
-                                                        { label: 'Gray', color: identity.colors?.neutral_gray },
-                                                        { label: 'Black', color: identity.colors?.neutral_black }
+                                                        { id: 'neutral_white', label: 'White', color: identity.colors?.neutral_white },
+                                                        { id: 'neutral_gray', label: 'Gray', color: identity.colors?.neutral_gray },
+                                                        { id: 'neutral_black', label: 'Black', color: identity.colors?.neutral_black }
                                                     ].map((c, idx) => c.color ? (
-                                                        <div key={`n-${idx}`} className="relative group/color cursor-pointer" title={`${c.label}: ${c.color}`} onClick={() => navigator.clipboard.writeText(c.color || '')}>
-                                                            <div className="size-6 rounded border border-white/20 shadow-sm group-hover/color:scale-110 transition-transform" style={{ backgroundColor: c.color || '#000' }}></div>
+                                                        <div key={`n-${idx}`} className="relative group/color">
+                                                            {isEditingColors ? (
+                                                                <div className="flex flex-col gap-1 items-center">
+                                                                    <div className="size-6 rounded border border-white/20 shadow-sm relative overflow-hidden">
+                                                                        <input type="color" className="absolute -inset-1 w-[150%] h-[150%] cursor-pointer p-0 border-0" value={c.color} onChange={(e) => handleColorChange(c.id, e.target.value)} />
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="relative group/color cursor-pointer" title={`Click to copy ${c.label}`} onClick={() => navigator.clipboard.writeText(c.color || '')}>
+                                                                    <div className="size-6 rounded border border-white/20 shadow-sm group-hover/color:scale-110 transition-transform" style={{ backgroundColor: c.color || '#000' }}></div>
+                                                                    <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] text-white px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none flex flex-col items-center">
+                                                                        <span className="font-bold">{c.label}</span>
+                                                                        <span className="text-[9px] text-primary">(Copy)</span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ) : null)}
                                                 </div>
                                             </>
                                         )}
-                                        {/* Neon (Only show if new data exists) */}
+                                        {/* Neon */}
                                         {identity.colors?.highlight_neon && (
                                             <>
                                                 <div className="w-px h-8 bg-white/10 self-center mx-1"></div>
                                                 <div className="flex items-center gap-2">
-                                                    <div className="relative group/color cursor-pointer" onClick={() => navigator.clipboard.writeText(identity.colors.highlight_neon || '')}>
-                                                        <div className="size-8 rounded-full border-2 border-primary/50 shadow-lg group-hover/color:scale-110 transition-transform flex items-center justify-center animate-pulse" style={{ backgroundColor: identity.colors.highlight_neon || '#000' }}>
-                                                            <span className="material-symbols-outlined text-[10px] text-black">bolt</span>
-                                                        </div>
+                                                    <div className="relative group/color">
+                                                        {isEditingColors ? (
+                                                            <div className="flex flex-col gap-1 items-center">
+                                                                <div className="size-8 rounded-full border-2 border-primary/50 shadow-lg flex items-center justify-center relative overflow-hidden">
+                                                                    <span className="material-symbols-outlined text-[10px] text-black absolute z-10 pointer-events-none">bolt</span>
+                                                                    <input type="color" className="absolute -inset-1 w-[150%] h-[150%] cursor-pointer p-0 border-0" value={identity.colors.highlight_neon} onChange={(e) => handleColorChange('highlight_neon', e.target.value)} />
+                                                                </div>
+                                                                <input
+                                                                    type="text"
+                                                                    value={identity.colors.highlight_neon}
+                                                                    onChange={(e) => handleColorChange('highlight_neon', e.target.value)}
+                                                                    className="text-[10px] w-14 bg-black/50 border border-white/20 rounded text-center text-white"
+                                                                />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="relative group/color cursor-pointer" onClick={() => navigator.clipboard.writeText(identity.colors.highlight_neon || '')}>
+                                                                <div className="size-8 rounded-full border-2 border-primary/50 shadow-lg group-hover/color:scale-110 transition-transform flex items-center justify-center animate-pulse" style={{ backgroundColor: identity.colors.highlight_neon || '#000' }}>
+                                                                    <span className="material-symbols-outlined text-[10px] text-black">bolt</span>
+                                                                </div>
+                                                                <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] text-white px-2 py-1 rounded opacity-0 group-hover/color:opacity-100 transition-opacity whitespace-nowrap z-20 pointer-events-none flex flex-col items-center">
+                                                                    <span className="font-bold">Neon</span>
+                                                                    <span className="text-[9px] text-primary">(Copy)</span>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </>
@@ -498,6 +648,71 @@ const BrandView: React.FC<BrandViewProps> = ({ analysis, selectedName, savedIden
                     <div className="bg-surface-dark rounded-2xl border border-border-dark overflow-hidden flex flex-col xl:flex-row shadow-2xl">
                         {/* Prompt & Controls */}
                         <div className="w-full xl:w-1/3 p-6 border-b xl:border-b-0 xl:border-r border-border-dark flex flex-col gap-4 relative">
+
+                            {/* Advanced Controls */}
+                            <div className="flex flex-col gap-3 relative z-10 mb-2">
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-xs text-gray-400 font-bold uppercase">Main Subject (Optional)</label>
+                                    <input
+                                        type="text"
+                                        value={iconSubject}
+                                        onChange={(e) => setIconSubject(e.target.value)}
+                                        placeholder="e.g. 'Rocket', 'Bunny'"
+                                        className="w-full bg-surface-darker border border-border-dark rounded-lg px-3 py-2 text-sm text-gray-300 focus:border-primary outline-none"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">Background</label>
+                                        <div className="flex items-center gap-2">
+                                            <div className="size-8 rounded-full border border-border-dark overflow-hidden relative">
+                                                <input type="color" className="absolute -inset-1 w-[200%] h-[200%] cursor-pointer" value={bgColorOverride} onChange={(e) => setBgColorOverride(e.target.value)} />
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 font-mono">{bgColorOverride || 'Auto'}</span>
+                                        </div>
+                                        {/* Smart Palette Picker */}
+                                        {identity && (
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {getBrandColors().map((color, i) => (
+                                                    <div
+                                                        key={`bg-${i}`}
+                                                        onClick={() => setBgColorOverride(color)}
+                                                        className="size-4 rounded-full border border-white/20 cursor-pointer hover:scale-125 transition-transform"
+                                                        style={{ backgroundColor: color }}
+                                                        title="Use this brand color"
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[10px] text-gray-500 font-bold uppercase">Subject/Icon</label>
+                                        <div className="flex items-center gap-2">
+                                            <div className="size-8 rounded-full border border-border-dark overflow-hidden relative">
+                                                <input type="color" className="absolute -inset-1 w-[200%] h-[200%] cursor-pointer" value={subjectColorOverride} onChange={(e) => setSubjectColorOverride(e.target.value)} />
+                                            </div>
+                                            <span className="text-[10px] text-gray-400 font-mono">{subjectColorOverride || 'Auto'}</span>
+                                        </div>
+                                        {/* Smart Palette Picker */}
+                                        {identity && (
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {getBrandColors().map((color, i) => (
+                                                    <div
+                                                        key={`subj-${i}`}
+                                                        onClick={() => setSubjectColorOverride(color)}
+                                                        className="size-4 rounded-full border border-white/20 cursor-pointer hover:scale-125 transition-transform"
+                                                        style={{ backgroundColor: color }}
+                                                        title="Use this brand color"
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="h-px bg-border-dark w-full my-1"></div>
+
                             <div className="flex justify-between items-center relative z-10">
                                 <label className="text-sm font-bold text-gray-300">Prompt Editor</label>
                                 <button

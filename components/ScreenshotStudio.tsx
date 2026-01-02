@@ -184,26 +184,6 @@ const ScreenshotStudio: React.FC<ScreenshotStudioProps> = ({
 }) => {
     const [activeTab, setActiveTab] = useState<GraphicType>('SCREENSHOTS');
 
-    // --- Font Loading Logic ---
-    useEffect(() => {
-        if (brandIdentity?.typography) {
-            const { headingFont, bodyFont } = brandIdentity.typography;
-            const fontsToLoad = [headingFont];
-            if (bodyFont && bodyFont !== headingFont) fontsToLoad.push(bodyFont);
-
-            if (fontsToLoad.length > 0) {
-                const linkId = 'brand-fonts-stylesheet';
-                if (!document.getElementById(linkId)) {
-                    const link = document.createElement('link');
-                    link.id = linkId;
-                    link.rel = 'stylesheet';
-                    link.href = `https://fonts.googleapis.com/css2?family=${fontsToLoad.map(f => f.replace(/\s+/g, '+')).join('&family=')}&display=swap`;
-                    document.head.appendChild(link);
-                }
-            }
-        }
-    }, [brandIdentity]);
-
     // --- Initialization Logic ---
 
     const createSmallTileDefaults = (): ScreenshotData[] => {
@@ -320,6 +300,51 @@ const ScreenshotStudio: React.FC<ScreenshotStudioProps> = ({
     const [screenshots, setScreenshots] = useState<ScreenshotData[]>(initialScreenshots);
     const [smallTiles, setSmallTiles] = useState<ScreenshotData[]>(initialSmallTiles);
     const [marquees, setMarquees] = useState<ScreenshotData[]>(initialMarquees);
+
+    // --- Font Loading Logic (AFTER state initialization) ---
+    useEffect(() => {
+        if (brandIdentity?.typography) {
+            const { headingFont, bodyFont } = brandIdentity.typography;
+            const fontsToLoad = [headingFont];
+            if (bodyFont && bodyFont !== headingFont) fontsToLoad.push(bodyFont);
+
+            if (fontsToLoad.length > 0) {
+                const linkId = 'brand-fonts-stylesheet';
+                const oldLink = document.getElementById(linkId);
+                if (oldLink) oldLink.remove();
+
+                const link = document.createElement('link');
+                link.id = linkId;
+                link.rel = 'stylesheet';
+                link.href = `https://fonts.googleapis.com/css2?family=${fontsToLoad.map(f => f.replace(/\s+/g, '+') + ':wght@300;400;500;700;900').join('&family=')}&display=swap`;
+                document.head.appendChild(link);
+            }
+        }
+    }, [brandIdentity?.typography?.headingFont, brandIdentity?.typography?.bodyFont]);
+
+    // Load custom fonts on demand when they're selected
+    useEffect(() => {
+        const customFonts = new Set<string>();
+        [...screenshots, ...smallTiles, ...marquees].forEach(shot => {
+            if (shot.headingFont &&
+                shot.headingFont !== brandIdentity?.typography?.headingFont &&
+                shot.headingFont !== brandIdentity?.typography?.bodyFont) {
+                customFonts.add(shot.headingFont);
+            }
+        });
+
+        if (customFonts.size > 0) {
+            const linkId = 'custom-fonts-stylesheet';
+            const oldLink = document.getElementById(linkId);
+            if (oldLink) oldLink.remove();
+
+            const link = document.createElement('link');
+            link.id = linkId;
+            link.rel = 'stylesheet';
+            link.href = `https://fonts.googleapis.com/css2?family=${Array.from(customFonts).map(f => f.replace(/\s+/g, '+') + ':wght@300;400;500;700;900').join('&family=')}&display=swap`;
+            document.head.appendChild(link);
+        }
+    }, [screenshots.map(s => s.headingFont).join(','), smallTiles.map(s => s.headingFont).join(','), marquees.map(s => s.headingFont).join(','), brandIdentity?.typography?.headingFont, brandIdentity?.typography?.bodyFont]);
 
     // Computed Values
     const currentCollection = activeTab === 'SCREENSHOTS' ? screenshots : activeTab === 'SMALL_TILE' ? smallTiles : marquees;
@@ -730,7 +755,7 @@ const ScreenshotStudio: React.FC<ScreenshotStudioProps> = ({
         const headlineStyle = {
             color: headlineColor,
             fontSize: `calc(${isSmallTile ? '2rem' : (isMarquee ? '5rem' : '6rem')} * ${pos.headlineSize / 100})`,
-            fontFamily: brandIdentity?.typography?.headingFont || 'Inter'
+            fontFamily: activeScreenshot.headingFont || brandIdentity?.typography?.headingFont || 'Inter'
         };
         const subheadlineStyle = {
             color: subheadlineColor,
@@ -1070,6 +1095,32 @@ const ScreenshotStudio: React.FC<ScreenshotStudioProps> = ({
                                         onChange={(e) => updateActiveScreenshot({ subheadline: e.target.value })}
                                         placeholder="Subheadline"
                                     />
+
+                                    {/* Font Selector */}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Headline Font</label>
+                                        <select
+                                            className="block w-full rounded-xl border-border-dark bg-surface-darker shadow-sm focus:border-primary focus:ring-primary text-xs p-3 text-white"
+                                            value={activeScreenshot?.headingFont || brandIdentity?.typography?.headingFont || 'Inter'}
+                                            onChange={(e) => updateActiveScreenshot({ headingFont: e.target.value })}
+                                        >
+                                            <option value="Inter">Inter</option>
+                                            <option value="Roboto">Roboto</option>
+                                            <option value="Montserrat">Montserrat</option>
+                                            <option value="Poppins">Poppins</option>
+                                            <option value="Lato">Lato</option>
+                                            <option value="Open Sans">Open Sans</option>
+                                            <option value="Raleway">Raleway</option>
+                                            <option value="Oswald">Oswald</option>
+                                            <option value="Playfair Display">Playfair Display</option>
+                                            <option value="Merriweather">Merriweather</option>
+                                            <option value="Bebas Neue">Bebas Neue</option>
+                                            <option value="Nunito">Nunito</option>
+                                            {brandIdentity?.typography?.headingFont && !['Inter', 'Roboto', 'Montserrat', 'Poppins', 'Lato', 'Open Sans', 'Raleway', 'Oswald', 'Playfair Display', 'Merriweather', 'Bebas Neue', 'Nunito'].includes(brandIdentity.typography.headingFont) && (
+                                                <option value={brandIdentity.typography.headingFont}>{brandIdentity.typography.headingFont} (Brand)</option>
+                                            )}
+                                        </select>
+                                    </div>
 
                                     {activeTab !== 'SMALL_TILE' && (
                                         <div className="flex bg-surface-dark/50 rounded-lg border border-border-dark p-1">
