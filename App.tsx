@@ -16,6 +16,7 @@ import { projectService } from './services/projectService';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  console.log('App Mounted. Auth State:', isAuthenticated);
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.DASHBOARD);

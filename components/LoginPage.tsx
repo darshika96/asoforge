@@ -20,11 +20,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     }
   };
 
+  console.log('LoginPage Rendering');
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#161811] text-white">
       <div className="w-full max-w-md p-8 space-y-6 bg-[#1A1D15] rounded-xl border border-[#2A2E24] shadow-2xl">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-[#c0f425]">ASOForge</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-[#c0f425]">ASOForge Login</h1>
           <p className="text-gray-400">Sign in to continue</p>
         </div>
 
@@ -34,7 +36,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               {error}
             </div>
           )}
-          
+
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm font-medium text-gray-300">
               Username
