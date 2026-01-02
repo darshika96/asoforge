@@ -10,10 +10,12 @@ import DescriptionView from './components/DescriptionView';
 import ScreenshotStudio from './components/ScreenshotStudio';
 import PrivacyView from './components/PrivacyView';
 import FinalizeView from './components/FinalizeView';
+import LoginPage from './components/LoginPage';
 import { AppStep, ProjectState, AnalysisResult, GeneratedName, GeneratedAsset, BrandIdentity, ScreenshotData, StoreGraphicsPreferences, ScoredDescription } from './types';
 import { projectService } from './services/projectService';
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [projects, setProjects] = useState<ProjectState[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.DASHBOARD);
@@ -376,6 +378,10 @@ const App: React.FC = () => {
         return <div>Unknown Step</div>;
     }
   };
+
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={(isValid) => setIsAuthenticated(isValid)} />;
+  }
 
   return (
     <Layout
