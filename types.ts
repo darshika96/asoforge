@@ -52,10 +52,14 @@ export interface GeneratedAsset {
 
 export interface BrandIdentity {
   colors: {
-    primary: string;
-    secondary: string;
-    background: string;
-    accent: string;
+    primary1: string;
+    primary2: string;
+    accent1: string;
+    accent2: string;
+    neutral_white: string;
+    neutral_black: string;
+    neutral_gray: string;
+    highlight_neon: string;
   };
   typography: {
     headingFont: string;
@@ -78,6 +82,15 @@ export interface ImagePosition {
   imgZoom: number;
   imgX: number;
   imgY: number;
+
+  // Text & Header Transforms
+  textX: number;
+  textY: number;
+  headlineSize: number;
+  subheadlineSize: number;
+  logoSize: number;
+  showLogo: boolean;
+  showName: boolean;
 }
 
 export interface ScreenshotData {
@@ -116,7 +129,7 @@ export interface ProjectState {
   selectedName: GeneratedName | null;
   generatedShortDescriptions: ScoredDescription[];
   selectedShortDescription: ScoredDescription | null;
-  visualStyle: 'Cute Character' | '3D Geometric' | 'Abstract' | '3D Letter' | 'Modern Minimalist';
+  visualStyle: 'Modern Mascot' | '3D Geometric' | 'Abstract' | '3D Letter' | 'Modern Minimalist' | '3D Shapes';
   generatedAssets: GeneratedAsset[];
   fullDescription: string | null;
   brandIdentity: BrandIdentity | null;

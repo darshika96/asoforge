@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import DashboardView from './components/DashboardView';
 import AnalysisView from './components/AnalysisView';
@@ -10,7 +10,7 @@ import DescriptionView from './components/DescriptionView';
 import ScreenshotStudio from './components/ScreenshotStudio';
 import PrivacyView from './components/PrivacyView';
 import FinalizeView from './components/FinalizeView';
-import { AppStep, ProjectState, AnalysisResult, GeneratedName, GeneratedAsset, BrandIdentity, ScreenshotData, StoreGraphicsPreferences } from './types';
+import { AppStep, ProjectState, AnalysisResult, GeneratedName, GeneratedAsset, BrandIdentity, ScreenshotData, StoreGraphicsPreferences, ScoredDescription } from './types';
 import { projectService } from './services/projectService';
 
 const App: React.FC = () => {
@@ -18,13 +18,50 @@ const App: React.FC = () => {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<AppStep>(AppStep.DASHBOARD);
   const [isLoading, setIsLoading] = useState(true);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Migration helper: Convert old color structure to new 8-color structure
+  const migrateBrandIdentity = (project: ProjectState): ProjectState => {
+    if (!project.brandIdentity) return project;
+
+    const colors = project.brandIdentity.colors as any;
+
+    // Check if already migrated (has primary1)
+    if (colors.primary1) return project;
+
+    // Migrate old structure to new
+    return {
+      ...project,
+      brandIdentity: {
+        ...project.brandIdentity,
+        colors: {
+          primary1: colors.primary || '#c0f425',
+          primary2: colors.secondary || '#a3d615',
+          accent1: colors.accent || '#ffffff',
+          accent2: colors.accent || '#f0f0f0', // Duplicate accent as accent2
+          neutral_white: '#ffffff',
+          neutral_black: colors.background || '#161811',
+          neutral_gray: '#888888',
+          highlight_neon: colors.accent || '#00ffcc'
+        },
+        typography: {
+          headingFont: project.brandIdentity.typography?.headingFont || 'Inter',
+          bodyFont: project.brandIdentity.typography?.bodyFont || project.brandIdentity.typography?.headingFont || 'Inter',
+          reasoning: project.brandIdentity.typography?.reasoning || ''
+        }
+      }
+    };
+  };
 
   // Load projects from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       const data = await projectService.getAllProjects();
-      setProjects(data);
+      // Migrate old projects to new color structure
+      const migratedData = data.map(migrateBrandIdentity);
+      setProjects(migratedData);
       setIsLoading(false);
     };
     loadData();
@@ -45,17 +82,29 @@ const App: React.FC = () => {
         }
         return p;
       });
-
-      // 2. Fire and forget save to DB (using the updated object from the map)
-      const updatedProject = newProjects.find(p => p.id === currentProjectId);
-      if (updatedProject) {
-        // We don't await this to keep UI snappy, unless we want to show a saving indicator
-        projectService.saveProject(updatedProject);
-      }
-
       return newProjects;
     });
   }, [currentProjectId]);
+
+  // 3. Debounced Save Effect
+  useEffect(() => {
+    if (activeProject) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+
+      saveTimeoutRef.current = setTimeout(async () => {
+        setIsSaving(true);
+        try {
+          await projectService.saveProject(activeProject);
+        } finally {
+          setIsSaving(false);
+        }
+      }, 1000); // 1.0s debounce
+    }
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [activeProject]);
 
   // --- Actions ---
 
@@ -69,7 +118,7 @@ const App: React.FC = () => {
       selectedName: null,
       generatedShortDescriptions: [],
       selectedShortDescription: null,
-      visualStyle: 'Cute Character',
+      visualStyle: 'Modern Mascot',
       generatedAssets: [],
       fullDescription: null,
       brandIdentity: null,
@@ -334,6 +383,7 @@ const App: React.FC = () => {
       credits={2450}
       onNavigate={handleNavigate}
       projectName={activeProject?.selectedName?.name || activeProject?.name}
+      isSaving={isSaving}
     >
       {renderStep()}
     </Layout>

@@ -18,6 +18,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ projects, onCreateNew, on
     }
   };
 
+
   return (
     <div className="flex flex-col gap-8 pb-20 max-w-6xl mx-auto">
       <header className="flex flex-col gap-4">
@@ -50,7 +51,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({ projects, onCreateNew, on
             {/* Visual Header */}
             <div className="h-32 bg-surface-darker relative overflow-hidden border-b border-border-dark">
               <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:10px_10px]"></div>
-              {project.generatedAssets.find(a => a.usage === 'MARQUEE') ? (
+              {project.generatedAssets.find(a => a.usage === 'ICON_MAIN') ? (
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  <img
+                    src={project.generatedAssets.find(a => a.usage === 'ICON_MAIN')?.url}
+                    className="h-full w-auto object-contain drop-shadow-xl"
+                    alt="Logo"
+                  />
+                </div>
+              ) : project.generatedAssets.find(a => a.usage === 'MARQUEE') ? (
                 <img src={project.generatedAssets.find(a => a.usage === 'MARQUEE')?.url} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="Cover" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center opacity-20">

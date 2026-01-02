@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AnalysisResult, GeneratedName, BrandIdentity } from "../types";
+import { AnalysisResult, GeneratedName, BrandIdentity, ScoredDescription } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 // Models
 const TEXT_MODEL = 'gemini-3-flash-preview';
@@ -78,10 +78,100 @@ Score each description (0-100) based on:
 
 Return valid JSON only.`;
 
-const LONG_DESCRIPTION_INSTRUCTION = `You are a professional copywriter for the Chrome Web Store.
-Your task is to write a comprehensive "Long Description" (Overview) using Markdown.
-You must adhere to Google's best practices: clear headings, bullet points for readability, and keyword integration without stuffing.
-Use the provided "Reference Example" style: concise sections, clear value propositions, and a "How to Use" section.`;
+const LONG_DESCRIPTION_INSTRUCTION = `You are an Elite Creative Copywriter and Product Psychologist.
+Your goal is to write a highly converting "Long Description" that speaks directly to user needs.
+
+CORE PERSONA:
+- You are NOT a robot. You are a human storyteller.
+- You strictly adhere to the provided "Brand Tone" (e.g., if "Witty", be funny; if "Professional", be serious).
+
+CRITICAL FORMATTING RULES:
+1. NO MARKDOWN SYNTAX. Do not use #, ##, ***, or [links].
+2. HEADERS: Use CAPITAL LETTERS with emoji decorations for sections.
+3. SEPARATORS: Use dashed lines (e.g., "--------------------------------") to break up sections.
+4. LISTS: Use emojis (✅, 🚀, •, 👉) as bullet points.
+5. EMPHASIS: Use CAPITALS for emphasis instead of bold.
+6. LAYOUT: Use spacing effectively to make it scanable.
+
+WRITING STRATEGY:
+1. THE HOOK: Start with a question or statement that identifies the user's biggest pain point.
+2. THE SOLUTION: Introduce the app as the "Magic Pill" solution.
+3. THE FEATURES: List features, but ALWAYS pair them with a benefit (e.g., "Fast Encoding" -> "Save hours of waiting").
+4. THE TONE: Match the app's specific brand voice perfectly.
+`;
+
+export const generateStoreListing = async (
+  analysis: AnalysisResult,
+  name: string,
+  shortDescription: string
+): Promise<string> => {
+  const featureExample = (analysis.coreFeatures && analysis.coreFeatures.length > 0)
+    ? analysis.coreFeatures[0]
+    : "Main Key Feature";
+
+  const prompt = `
+  App Name: ${name}
+  Short Description: ${shortDescription}
+  
+  DEEP ANALYSIS CONTEXT:
+  - Brand Tone: ${analysis.tone}
+  - Target Audience: ${analysis.targetAudience}
+  - Customer Pain Points/Psychology: ${analysis.customerPsychology}
+  - Core Unique Features: ${analysis.coreFeatures.join(', ')}
+
+  Reference Example Style (STRUCTURE ONLY - USE AS LAYOUT GUIDE):
+  """
+  🚀 BOOST YOUR PRODUCTIVITY WITH THIS APP
+  ----------------------------------------
+  
+  Do you struggle with X? We have the solution.
+  
+  ✨ KEY FEATURES
+  
+  👉 FAST CONVERSION
+  Convert files in seconds without losing quality.
+  
+  👉 SECURE & PRIVATE
+  Everything happens locally. No data leaves your text.
+  
+  ----------------------------------------
+  
+  🛠️ HOW TO USE
+  
+  1️⃣ Install the extension
+  2️⃣ Open any PDF
+  3️⃣ Click the button to edit!
+  
+  ----------------------------------------
+  
+  ✅ WHY CHOOSE US?
+  • 100% Free
+  • No Sign-up required
+  • Dark mode support
+  
+  DOWNLOAD NOW AND START CREATING! 🌟
+  """
+
+  Task: Generate a "Long Description" for the Chrome Web Store.
+  
+  EXECUTION STEPS:
+  1. Analyze the "Customer Pain Points" and write a Killer Hook opening.
+  2. Adopt the "${analysis.tone}" persona completely.
+  3. Highlight the "Core Unique Features" using the Text/Emoji layout style.
+  4. Ensure the writing is persuasive, human, and creative.
+  5. OUTPUT RAW TEXT ONLY.
+  `;
+
+  const response = await retry(async () => ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: prompt,
+    config: {
+      systemInstruction: LONG_DESCRIPTION_INSTRUCTION,
+    }
+  }));
+
+  return response.text || "Failed to generate description.";
+};
 
 const PRIVACY_POLICY_INSTRUCTION = `You are a Legal Compliance Expert for the Chrome Web Store.
 Your task is to generate a 'Privacy Policy' description for the 'Privacy practices' tab of the store listing, OR a standalone markdown policy document.
@@ -91,25 +181,63 @@ RULES:
 2. Adhere to the 'Data Minimization' and 'Single Purpose' policies.
 3. If no remote server is used, explicitly state that data stays local.
 4. Tone: Transparent, Legal but readable, Trust-building.
-5. Format: Markdown.
+5. Format: STRICT MARKDOWN ONLY. Do NOT include phrases like "Here is your policy". Start directly with the title.
+6. DATE: Use the provided current date for the "Last Updated" or "Effective Date" section.
 `;
 
-const DESIGNER_INSTRUCTION = `You are a world-class visual identity designer and prompt engineer.
-Your goal is to craft precise, descriptive prompts for an AI image generator to create App Icons.
-You understand the technical limitations of small icons (16px - 128px).
-You MUST focus on: High Contrast, Thick Lines, Minimal Detail, and distinctive silhouettes.
-You NEVER use generic phrases like "high quality" without specifying the visual style details.
+const DESIGNER_INSTRUCTION = `You are an expert high-fidelity prompt engineer.
+Your goal is to craft precise, evocative prompts for an AI image generator to create premium logos.
+You MUST prioritize Industry Relevance and a "Clean & Friendly" aesthetic.
+
+TECHNICAL RULES:
+1. **STRICTLY CLEAN**: Minimize details. Imagery MUST be high-impact and readable at small sizes.
+2. **FRIENDLY VIBE**: Use friendly smiles, "cuteness", and approachable shapes where applicable.
+3. **NO THICK OUTLINES**: Use rim lighting and depth instead of black lines.
+4. **SUBTLE GRADIENTS**: Avoid harsh color jumps; use smooth, minimal transitions.
+5. **HARMONIOUS COLORS**: Utilize the provided brand palette across the entire composition without strict subject/background splits.
 `;
 
-const BRAND_IDENTITY_INSTRUCTION = `You are a Lead Brand Designer.
-Generate a cohesive brand identity (Colors & Typography) for a Chrome Extension.
-CRITICAL RULES FOR COLORS:
+const BRAND_IDENTITY_INSTRUCTION = `You are a Senior Brand Designer and Master Color Strategist.
+Generate a distinctive, high-end brand identity for a Chrome Extension.
+Do NOT default to generic "Tech Blues" unless the tone strictly demands it.
+
+COLOR STRATEGY:
+1. **Harmony**: Choose the BEST color harmony for the specific Brand Tone (e.g., Complementary for high energy, Analogous for calm, Triadic for balance). Do NOT be limited to one type.
+2. **Vibe Match**: 
+   - If "Playful/Fun": Use high saturation, warm hues (yellows, pinks, oranges).
+   - If "Professional/Trusted": Use deep, rich tones (navy, forest green, slate) with crisp accents.
+   - If "Futuristic/Tech": Use electric neons against deep dark backgrounds.
+   - If "Minimalist": Use sophisticated neutrals with one bold "Pop" color.
+
+COLOR SPECIFICATIONS:
+1. **2 Primary Colors (Background & Core)**:
+   - Purpose: Foundations of the UI.
+   - Rule: Ensure they have enough contrast to be distinct but work together. 
+   - Avoid "muddy" mid-tones. Go for either deeply rich or clearly vibrant.
+2. **2 Accent Colors (Subject & Brand Mark)**:
+   - Purpose: The "Soul" of the brand.
+   - Rule: specific, memorable hues that stand out against the primaries.
+3. **Neutrals**: Crisp White (#ffffff), Deep Modern Black (e.g. #0a0a0a), and a balanced Gray.
+4. **Highlight Neon**: 
+   - Purpose: Cyber-electric glow. 
+   - Rule: 100% Saturation, High Brightness.
+
+GENERATE A TYPOGRAPHY SYSTEM (2 FONTS):
+1. **Primary / Display Font**: Usage: Logos, headlines. Personality: Expressive, legible.
+2. **Secondary / Text Font**: Usage: Body text, UI labels. Personality: Neutral, optimized for screens.
+
+TYPOGRAPHY RULES:
+1. **Google Fonts Only**: Must be widely supported.
+2. **Pairing Logic**: Contrast in structure (e.g. Serif + Sans, or Geometric Sans + Humanist Sans).
+
+CRITICAL OUTPUT RULES:
 1. Output STRICT 7-character HEX codes (e.g., #FF5733).
 2. HEX codes MUST match regex: ^#[0-9A-Fa-f]{6}$
-3. ABSOLUTELY NO 8-digit hex codes (Alpha channels are FORBIDDEN).
+3. ABSOLUTELY NO 8-digit hex codes.
 4. Do NOT output strings of zeros.
-"Nano Banana" aesthetic implies vibrant, high-energy colors (Neon Yellows, Deep Blacks, Electric Blues).
-CRITICAL: Return ONLY valid JSON.`;
+5. Return ONLY valid JSON.
+6. reasoning: Explain your specific Color Harmony choice and how it captures the unique "Customer Psychology" of this specific app.
+`;
 
 const SCREENSHOT_ANALYSIS_INSTRUCTION = `You are a UX writer and marketing expert.
 Your task is to look at a UI screenshot and generate a punchy, benefit-driven Headline (max 4 words) and a Subheadline (max 10 words).
@@ -121,40 +249,50 @@ The "highlightText" MUST be an exact substring of the "headline".
 Tone: Professional, Energetic, Direct.
 Return JSON only.`;
 
-// Helper: Clean and Parse JSON with recovery
+const SMALL_TILE_COPY_INSTRUCTION = `You are an expert ASO Copywriter.
+Generate a punchy, high-impact headline (STRICTLY 2-5 words) and a short subheadline (max 8 words) for a "Small Promo" tile.
+The copy must be based on the app's brand tone, core features, and description.
+Do NOT mention specific UI elements as there might not be a screenshot.
+
+Return JSON with:
+- headline: 2-5 words.
+- subheadline: Catchy summary.
+- highlightText: A single word from the headline to emphasize.
+
+Return JSON only.`;
+
+const STYLE_ANALYSIS_INSTRUCTION = `You are an expert Fine Art Analyst and Prompt Engineer.
+Analyze the provided image and describe its "Visual Style" in technical terms for an AI image generator.
+
+FOCUS ON:
+1. Composition (Camera angle, framing, depth of field).
+2. Lighting (Source, intensity, shadows, highlights).
+3. Textures & Materials (Glossy, matte, metallic, organic).
+4. Artistic Technique (3D render style, flat vector, oil painting, sketch).
+5. Line Quality & Shape Language (Thick, thin, sharp, rounded, geometric).
+
+CRITICAL RULE: 
+DO NOT mention the colors of the source image. We will override colors with our own brand palette. 
+Focus ONLY on the "Style" and "Vibe".
+
+Return a concise paragraph (max 40 words) of technical prompt tags.`;
+
 const parseJSON = <T>(text: string | undefined): T => {
   if (!text) throw new Error("Empty response from AI");
-
   try {
-    // Remove markdown code blocks if present
-    let clean = text.replace(/```json\n?|\n?```/g, '').trim();
-
-    // Safety check: if there is a massive run of zeros or 'F's due to a glitch, truncate it.
+    let clean = text.replace(/```json\n?|```/g, '').trim();
     clean = clean.replace(/(#[0-9A-Fa-f]{6})[0-9A-Fa-f]{2,}/g, '$1');
-
-    // Attempt to fix common JSON errors before parsing
     clean = clean.replace(/,\s*([\]\}])/g, '$1');
-
     try {
       return JSON.parse(clean) as T;
     } catch (parseError) {
-      // Recover from common AI formatting issues
-      if (/(#?[0-9A-Fa-f]{6})$/.test(clean)) {
-        clean += '"';
-      }
-
+      if (/(#?[0-9A-Fa-f]{6})$/.test(clean)) clean += '"';
       const openBraces = (clean.match(/\{/g) || []).length;
       const closeBraces = (clean.match(/\}/g) || []).length;
-      if (openBraces > closeBraces) {
-        clean += '}'.repeat(openBraces - closeBraces);
-      }
-
+      if (openBraces > closeBraces) clean += '}'.repeat(openBraces - closeBraces);
       const openBrackets = (clean.match(/\[/g) || []).length;
       const closeBrackets = (clean.match(/\]/g) || []).length;
-      if (openBrackets > closeBrackets) {
-        clean += ']'.repeat(openBrackets - closeBrackets);
-      }
-
+      if (openBrackets > closeBrackets) clean += ']'.repeat(openBrackets - closeBrackets);
       return JSON.parse(clean) as T;
     }
   } catch (e) {
@@ -163,24 +301,20 @@ const parseJSON = <T>(text: string | undefined): T => {
   }
 };
 
-// Retry Utility for Rate Limits (429)
 async function retry<T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
-    // Check for 429 status code in various forms
     const isRateLimit = error?.status === 429 || error?.code === 429 || error?.message?.includes('429') || error?.message?.includes('quota');
-
     if (retries > 0 && isRateLimit) {
       console.warn(`Rate limit hit. Retrying in ${delay}ms... (Retries left: ${retries})`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      return retry(fn, retries - 1, delay * 2); // Exponential backoff
+      return retry(fn, retries - 1, delay * 2);
     }
     throw error;
   }
 }
 
-// Internal interface for the raw AI response
 interface RawAnalysisResponse {
   category: string;
   targetAudience: string;
@@ -193,50 +327,39 @@ interface RawAnalysisResponse {
   isJunk: boolean;
 }
 
-// Verification Helper
 const validateAnalysis = (raw: RawAnalysisResponse): boolean => {
   if (raw.isJunk === undefined) return false;
   if (!raw.isJunk) {
-    // Ensure critical fields aren't empty
-    const hasData = raw.category &&
-      raw.targetAudience &&
-      raw.coreFeatures?.length > 0 &&
-      raw.primaryKeywords?.length > 0 &&
-      raw.seoStrategy &&
-      raw.marketAnalysis &&
-      raw.customerPsychology;
-    return !!hasData;
+    return !!(raw.category && raw.targetAudience && raw.coreFeatures?.length > 0 && raw.primaryKeywords?.length > 0 && raw.seoStrategy && raw.marketAnalysis && raw.customerPsychology);
   }
   return true;
 };
 
 export const analyzeProjectInput = async (input: string): Promise<AnalysisResult> => {
   const truncatedInput = input.length > 25000 ? input.substring(0, 25000) + "...[truncated]" : input;
-
   let rawResponse: RawAnalysisResponse | null = null;
   let attempts = 0;
   const maxAttempts = 3;
-
   while (attempts < maxAttempts) {
     try {
       const response = await retry(async () => ai.models.generateContent({
         model: TEXT_MODEL,
-        contents: `Analyze the following Chrome Extension idea/description with your full expert persona:
-        """
-        ${truncatedInput}
-        """
-        ${attempts > 0 ? "IMPORTANT: Your previous output was incomplete or malformed. Ensure ALL fields are filled with professional, high-quality analysis." : ""}
-        
-        Return a JSON object with:
-        - isJunk: Boolean. Set to true ONLY if the input is not a real project idea.
-        - category: The primary store category.
-        - targetAudience: A short description of the user (Max 20 words).
-        - coreFeatures: An array of 3-5 main features (Concise).
-        - primaryKeywords: An array of 5-8 SEO keywords (High-volume, high-intent).
-        - tone: An array of exactly 3-5 adjectives describing the brand.
-        - seoStrategy: A strategic approach to ASO.
-        - marketAnalysis: Competitive landscape summary.
-        - customerPsychology: User motivation analysis.`,
+        contents: `Analyze the following Chrome Extension idea / description with your full expert persona:
+"""
+${truncatedInput}
+"""
+${attempts > 0 ? "IMPORTANT: Your previous output was incomplete or malformed. Ensure ALL fields are filled with professional, high-quality analysis." : ""}
+
+Return a JSON object with:
+- isJunk: Boolean. Set to true ONLY if the input is not a real project idea.
+- category: The primary store category.
+- targetAudience: A short description of the user (Max 20 words).
+- coreFeatures: An array of 3-5 main features (Concise).
+- primaryKeywords: An array of 5-8 SEO keywords (High-volume, high-intent).
+- tone: An array of exactly 3-5 adjectives describing the brand.
+- seoStrategy: A strategic approach to ASO.
+- marketAnalysis: Competitive landscape summary.
+- customerPsychology: User motivation analysis.`,
         config: {
           systemInstruction: ANALYST_INSTRUCTION,
           temperature: 0.1,
@@ -257,29 +380,18 @@ export const analyzeProjectInput = async (input: string): Promise<AnalysisResult
           }
         }
       }));
-
       const parsed = parseJSON<RawAnalysisResponse>(response.text);
       if (validateAnalysis(parsed)) {
         rawResponse = parsed;
         break;
-      } else {
-        console.warn(`Analysis validation failed on attempt ${attempts + 1}`);
       }
     } catch (e) {
-      console.error(`Attempt ${attempts + 1} failed:`, e);
+      console.error(`Attempt ${attempts + 1} failed: `, e);
     }
     attempts++;
   }
-
-  if (!rawResponse) {
-    throw new Error("Unable to obtain correct analysis data after multiple attempts. Please try a more detailed description.");
-  }
-
-  if (rawResponse.isJunk) {
-    throw new Error("Junk input detected. Please provide a real project description or idea.");
-  }
-
-  // Convert the array tone back to string to match AnalysisResult interface
+  if (!rawResponse) throw new Error("Unable to obtain analysis data.");
+  if (rawResponse.isJunk) throw new Error("Junk input detected.");
   return {
     category: rawResponse.category || 'Productivity',
     targetAudience: rawResponse.targetAudience || 'General Users',
@@ -293,12 +405,9 @@ export const analyzeProjectInput = async (input: string): Promise<AnalysisResult
 };
 
 export const generateNameSuggestions = async (analysis: AnalysisResult): Promise<GeneratedName[]> => {
-  const prompt = `Based on this expert analysis: ${JSON.stringify(analysis)}, generate 6 SEO-optimized names and 6 Creative Brand names.
-  For Creative names, use the specified Brand Strategist techniques.
-  Provide a score (0-100) and identify the specific "strategy" used for each name.`;
-
+  const prompt = `Based on this expert analysis: ${JSON.stringify(analysis)}, generate 6 SEO-optimized names and 6 Creative Brand names.`;
   const response = await retry(async () => ai.models.generateContent({
-    model: TEXT_MODEL, // Using gemini-3-flash-preview
+    model: TEXT_MODEL,
     contents: prompt,
     config: {
       systemInstruction: NAMING_INSTRUCTION,
@@ -320,27 +429,14 @@ export const generateNameSuggestions = async (analysis: AnalysisResult): Promise
       }
     }
   }));
-
   return parseJSON<GeneratedName[]>(response.text);
 };
 
 export const generateShortDescriptions = async (analysis: AnalysisResult, name: string): Promise<ScoredDescription[]> => {
   const keywords = (analysis.primaryKeywords || []).join(', ');
-  const prompt = `
-    App Name: ${name}
-    Analysis: ${JSON.stringify(analysis)}
-    
-    Generate 6 distinct "Short Descriptions" for the Chrome Web Store.
-    
-    Requirements:
-    1. STRICT LIMIT: Under 132 characters (spaces included).
-    2. Incorporate primary keywords: ${keywords}.
-    3. Analyze user behavior for this niche and apply psychological triggers.
-    4. Provide a score (0-100) and identify the specific "keywordsUsed" for each.
-  `;
-
+  const prompt = `App Name: ${name}. Analysis: ${JSON.stringify(analysis)}. Generate 6 descriptions under 132 chars incorporating: ${keywords}.`;
   const response = await retry(async () => ai.models.generateContent({
-    model: TEXT_MODEL, // Using gemini-3-flash-preview
+    model: TEXT_MODEL,
     contents: prompt,
     config: {
       systemInstruction: DESCRIPTION_INSTRUCTION,
@@ -360,116 +456,40 @@ export const generateShortDescriptions = async (analysis: AnalysisResult, name: 
       }
     }
   }));
-
   return parseJSON<ScoredDescription[]>(response.text);
 };
 
-export const generateStoreListing = async (
-  analysis: AnalysisResult,
-  name: string,
-  shortDescription: string
-): Promise<string> => {
-  // Safe access for coreFeatures to avoid "undefined[0]" error
-  const featureExample = (analysis.coreFeatures && analysis.coreFeatures.length > 0)
-    ? analysis.coreFeatures[0]
-    : "Main Key Feature";
-
-  const prompt = `
-  App Name: ${name}
-  Short Description: ${shortDescription}
-  Analysis: ${JSON.stringify(analysis)}
-
-  Reference Example Style (Do not copy content, only structure and tone):
-  """
-  Easy-to-use PDF tools to view, edit, convert, fill, e-sign PDF files, and more in your browser.
-
-  WPS PDF, part of the WPS Office suite... offers an efficient approach to managing PDFs...
-  
-  How to Use the WPS PDF Chrome Extension:
-  • Install and pin WPS PDF Chrome Extension 
-  • Open your PDFs in browser...
-  
-  View, Download, Print, and Store PDFs 
-  • Get the best PDF viewing experience online...
-  
-  Edit PDFs 
-  • Add notes, text comments...
-  """
-
-  Task: Generate a markdown formatted "Long Description" for the Chrome Web Store. 
-  Include:
-  1. A strong opening hook expanding on the short description.
-  2. "How to Use" section with bullet points.
-  3. Feature sections with clear headers (e.g., "${featureExample}").
-  4. Conclusion/Call to Action.
-  `;
-
+export const generatePrivacyPolicy = async (appName: string, analysis: AnalysisResult, manifestData: any): Promise<string> => {
+  const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const prompt = `App: ${appName}. Features: ${analysis.coreFeatures.join(', ')}. Permissions: ${JSON.stringify(manifestData.permissions)}. Write a markdown privacy policy dated ${currentDate}.`;
   const response = await retry(async () => ai.models.generateContent({
     model: TEXT_MODEL,
     contents: prompt,
-    config: {
-      systemInstruction: LONG_DESCRIPTION_INSTRUCTION,
-      // No JSON schema here, we want Markdown text
-    }
+    config: { systemInstruction: PRIVACY_POLICY_INSTRUCTION }
   }));
-
-  return response.text || "Failed to generate description.";
+  let text = response.text || "Failed.";
+  return text.replace(/^```markdown\n?/, '').replace(/\n?```$/, '').trim();
 };
 
-export const generatePrivacyPolicy = async (
-  appName: string,
-  analysis: AnalysisResult,
-  manifestData: any
-): Promise<string> => {
-  const permissions = manifestData.permissions || [];
-  const hostPermissions = manifestData.host_permissions || [];
-  const optionalPermissions = manifestData.optional_permissions || [];
-
-  const prompt = `
-  App Name: ${appName}
-  Description: ${analysis.targetAudience}
-  
-  MANIFEST DATA:
-  Permissions: ${JSON.stringify(permissions)}
-  Host Permissions: ${JSON.stringify(hostPermissions)}
-  Optional Permissions: ${JSON.stringify(optionalPermissions)}
-  
-  Task:
-  Write a comprehensive Privacy Policy for this Chrome Extension.
-  1. Explain WHY each permission is needed (Justification).
-  2. Explicitly state what data is collected, how it is used, and if it is shared (Data Minimization).
-  3. If permissions list is empty, state that no user data is accessed.
-  4. Include standard clauses for "Changes to this Policy" and "Contact Us".
-  `;
-
+export const enhancePrivacyPolicy = async (currentText: string, appName: string, analysis: AnalysisResult): Promise<string> => {
+  const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const prompt = `Refine this policy for ${appName}: ${currentText}. Date: ${currentDate}. Output raw markdown.`;
   const response = await retry(async () => ai.models.generateContent({
     model: TEXT_MODEL,
     contents: prompt,
-    config: {
-      systemInstruction: PRIVACY_POLICY_INSTRUCTION,
-    }
+    config: { systemInstruction: PRIVACY_POLICY_INSTRUCTION }
   }));
-
-  return response.text || "Failed to generate privacy policy.";
+  let text = response.text || "Failed.";
+  return text.replace(/^```markdown\n?/, '').replace(/\n?```$/, '').trim();
 };
 
 export const generateBrandIdentity = async (analysis: AnalysisResult, name: string): Promise<BrandIdentity> => {
-  const prompt = `
-      App Name: ${name}
-      Tone: ${analysis.tone}
-      Audience: ${analysis.targetAudience}
-
-      Generate a unique brand identity including a color palette and typography choices.
-      Ensure all color hex codes are valid 6-character strings (e.g. #000000).
-    `;
-
+  const prompt = `App: ${name}. Tone: ${analysis.tone}. Generate a high-end tetradic brand identity (colors, typography).`;
   const response = await retry(async () => ai.models.generateContent({
     model: TEXT_MODEL,
     contents: prompt,
     config: {
       systemInstruction: BRAND_IDENTITY_INSTRUCTION,
-      temperature: 0.1,
-      // maxOutputTokens: 1000,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -477,63 +497,58 @@ export const generateBrandIdentity = async (analysis: AnalysisResult, name: stri
           colors: {
             type: Type.OBJECT,
             properties: {
-              primary: { type: Type.STRING, description: "Main color Hex #RRGGBB (7 chars)" },
-              secondary: { type: Type.STRING, description: "Secondary color Hex #RRGGBB (7 chars)" },
-              background: { type: Type.STRING, description: "Background Hex #RRGGBB (7 chars)" },
-              accent: { type: Type.STRING, description: "Accent Hex #RRGGBB (7 chars)" }
+              primary1: { type: Type.STRING },
+              primary2: { type: Type.STRING },
+              accent1: { type: Type.STRING },
+              accent2: { type: Type.STRING },
+              neutral_white: { type: Type.STRING },
+              neutral_black: { type: Type.STRING },
+              neutral_gray: { type: Type.STRING },
+              highlight_neon: { type: Type.STRING }
             }
           },
           typography: {
             type: Type.OBJECT,
             properties: {
-              headingFont: { type: Type.STRING, description: "Google Font for headers" },
-              bodyFont: { type: Type.STRING, description: "Google Font for body text" },
+              headingFont: { type: Type.STRING },
+              bodyFont: { type: Type.STRING },
               reasoning: { type: Type.STRING }
             }
           },
-          visualStyleDescription: { type: Type.STRING, description: "Brief description of the visual vibe" }
+          visualStyleDescription: { type: Type.STRING }
         }
       }
     }
   }));
-
   const parsed = parseJSON<Partial<BrandIdentity>>(response.text);
-
-  // Provide default values to prevent undefined access errors in UI
   return {
     colors: {
-      primary: parsed.colors?.primary || '#c0f425',
-      secondary: parsed.colors?.secondary || '#ffffff',
-      background: parsed.colors?.background || '#161811',
-      accent: parsed.colors?.accent || '#a3d615',
+      primary1: parsed.colors?.primary1 || '#c0f425',
+      primary2: parsed.colors?.primary2 || '#a3d615',
+      accent1: parsed.colors?.accent1 || '#ffffff',
+      accent2: parsed.colors?.accent2 || '#f0f0f0',
+      neutral_white: parsed.colors?.neutral_white || '#ffffff',
+      neutral_black: parsed.colors?.neutral_black || '#161811',
+      neutral_gray: parsed.colors?.neutral_gray || '#888888',
+      highlight_neon: parsed.colors?.highlight_neon || '#00ffcc',
     },
     typography: {
       headingFont: parsed.typography?.headingFont || 'Inter',
       bodyFont: parsed.typography?.bodyFont || 'Roboto',
-      reasoning: parsed.typography?.reasoning || 'Clean and modern fallback.',
+      reasoning: parsed.typography?.reasoning || 'Clean and modern.',
     },
-    visualStyleDescription: parsed.visualStyleDescription || 'Modern dark mode aesthetic.'
+    visualStyleDescription: parsed.visualStyleDescription || 'Modern dark mode.'
   };
 };
 
 export const analyzeScreenshot = async (imageBase64: string, appName: string, tone: string): Promise<{ headline: string, subheadline: string, highlightText: string }> => {
-  const prompt = `Analyze this UI screenshot for the app "${appName}".
-  Tone: ${tone}.
-  
-  Generate a text overlay for a marketing screenshot.
-  1. Headline: Max 4 words, very punchy, benefit driven.
-  2. Subheadline: Max 10 words, describing the feature shown.
-  3. Highlight Text: Choose 1-2 words from the headline to emphasize.`;
-
-  // Strip prefix if present
   const base64Data = imageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
-
   const response = await retry(async () => ai.models.generateContent({
-    model: TEXT_MODEL, // Using gemini-3-flash-preview which is multimodal
+    model: TEXT_MODEL,
     contents: {
       parts: [
         { inlineData: { mimeType: 'image/png', data: base64Data } },
-        { text: prompt }
+        { text: `Analyze screenshot for ${appName} with tone ${tone}.` }
       ]
     },
     config: {
@@ -549,181 +564,178 @@ export const analyzeScreenshot = async (imageBase64: string, appName: string, to
       }
     }
   }));
-
-  return parseJSON<{ headline: string, subheadline: string, highlightText: string }>(response.text);
+  return parseJSON(response.text);
 };
 
-// Step 1: Generate the Prompt Text (Editable)
-export const generateImagePrompt = async (
-  style: string,
-  analysis: AnalysisResult,
-  appName: string,
-  assetType: 'ICON' | 'BANNER',
-  brandIdentity?: BrandIdentity | null
-): Promise<string> => {
-  const isBanner = assetType === 'BANNER';
-
-  // Construct Brand Palette Context
-  let colorContext = "";
-  if (brandIdentity) {
-    colorContext = `
-      STRICT COLOR PALETTE (You MUST utilize these exact colors in your composition):
-      - Primary Color (Dominant): ${brandIdentity.colors.primary}
-      - Secondary Color: ${brandIdentity.colors.secondary}
-      - Background Color: ${brandIdentity.colors.background}
-      - Accent Color: ${brandIdentity.colors.accent}
-      `;
-  }
-
-  // Specific Style Instructions based on the user's selection
-  let styleInstruction = "";
-
-  if (!isBanner) {
-    // ICON SPECIFIC LOGIC
-    switch (style) {
-      case 'Cute Character':
-        styleInstruction = `
-              STYLE: CUTE MASCOT HEADSHOT.
-              - Content: A close-up face/head of a cute character or animal related to "${appName}".
-              - Composition: Centered headshot. Zoomed in. Big expressive eyes.
-              - Details: Minimalist vector art. Thick rounded outlines. NO small details.
-              - Background: Solid gradient using the brand palette.
-              - Vibe: Kawaii, friendly, approachable, high contrast.
-              `;
-        break;
-      case '3D Geometric':
-        styleInstruction = `
-              STYLE: ABSTRACT 3D GEOMETRY.
-              - Content: A single abstract primitive shape representing the core feature.
-              - Composition: Isometric view. Centered. Floating in space.
-              - Details: Soft lighting, matte finish, slight ambient occlusion. No text.
-              - Background: Clean, solid dark or light background to make the shape pop.
-              - Vibe: Tech-forward, modern, stable.
-              `;
-        break;
-      case '3D Letter':
-        styleInstruction = `
-              STYLE: 3D TYPOGRAPHY.
-              - Content: The first letter of the app name: "${appName.charAt(0).toUpperCase()}".
-              - Composition: Big, bold, centered letterform.
-              - Details: 3D render, glossy or matte material, dramatic lighting from top-left.
-              - Background: Solid contrasting background from brand palette.
-              - Vibe: Professional, established, premium.
-              `;
-        break;
-      case 'Modern Minimalist':
-        styleInstruction = `
-              STYLE: FLAT VECTOR ICON.
-              - Content: A symbolic representation of the app's function using simple geometric forms.
-              - Composition: Flat 2D. Perfect symmetry. Heavy use of negative space.
-              - Details: Zero gradients. Zero shadows. Pure flat color.
-              - Background: Solid single color.
-              - Vibe: Clean, utility, efficient.
-              `;
-        break;
-      case 'Abstract':
-        styleInstruction = `
-              STYLE: ABSTRACT TECH SYMBOL.
-              - Content: Interconnected nodes, flow lines, or digital energy concept.
-              - Composition: Radial or symmetrical balance.
-              - Details: Glowing edges, neon aesthetics, "Nano Banana" high saturation.
-              - Background: Deep dark background to let the neon colors glow.
-              - Vibe: Cyberpunk, futuristic, AI.
-              `;
-        break;
-      default:
-        styleInstruction = `
-              STYLE: VECTOR APP ICON.
-              - Content: Simple central logo mark.
-              - Composition: High contrast, readable at 16x16px.
-              - Background: Simple gradient.
-              `;
-        break;
-    }
-  } else {
-    // BANNER SPECIFIC LOGIC
-    styleInstruction = `
-      STYLE: STORE MARQUEE BACKGROUND.
-      - Aspect Ratio: 16:9.
-      - Composition: Abstract wallpaper, pattern, or 3D scene.
-      - Layout: MUST have empty "negative space" in the center or left for text overlay.
-      - Content: Subtle reference to the app theme, but mostly decorative.
-      - Constraint: DO NOT INCLUDE ANY TEXT IN THE IMAGE.
-      `;
-  }
-
-  const prompt = `
-  Role: Create a precise image generation prompt for a Chrome Extension ${assetType}.
+export const generateSmallTileCopy = async (analysis: AnalysisResult, appName: string, shortDescription: string): Promise<{ headline: string, subheadline: string, highlightText: string }> => {
+  const prompt = `Generate small promo copy for ${appName}. 
+  Description: ${shortDescription}
+  Analysis: ${JSON.stringify(analysis)}
   
-  APP CONTEXT:
-  - App Name: ${appName}
-  - Description: ${analysis.targetAudience}
-  ${colorContext}
-  
-  ${styleInstruction}
-  
-  GENERAL RULES:
-  - Use comma-separated descriptive tags.
-  - Mention specific lighting (e.g., "soft studio lighting", "neon rim light").
-  - Mention texture (e.g., "matte plastic", "vector flat", "glassmorphism").
-  - For Icons: Emphasize "white background" or "solid background" to ensure easy cropping.
-  
-  OUTPUT:
-  Return ONLY the raw prompt string for the image generator. Do not wrap in quotes or markdown.
-  `;
+  Tone: ${analysis.tone}`;
 
   const response = await retry(async () => ai.models.generateContent({
     model: TEXT_MODEL,
     contents: prompt,
     config: {
-      systemInstruction: DESIGNER_INSTRUCTION
-    }
-  }));
-
-  return response.text || `A ${style} ${assetType} for ${appName}, vector art`;
-};
-
-// Step 2: Execute Image Generation
-export const generateImageFromPrompt = async (
-  prompt: string,
-  aspectRatio: '1:1' | '16:9' = '1:1'
-): Promise<string> => {
-  try {
-    const response = await retry(async () => ai.models.generateContent({
-      model: IMAGE_MODEL,
-      contents: {
-        parts: [{ text: prompt }]
-      },
-      config: {
-        // @ts-ignore
-        imageConfig: {
-          aspectRatio: aspectRatio
+      systemInstruction: SMALL_TILE_COPY_INSTRUCTION,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          headline: { type: Type.STRING },
+          subheadline: { type: Type.STRING },
+          highlightText: { type: Type.STRING }
         }
       }
-    }));
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-      }
     }
-  } catch (e) {
-    console.error("Image generation failed", e);
-    throw new Error("Failed to generate image. The model might be overloaded or the prompt restricted.");
-  }
-
-  throw new Error("No image generated");
+  }));
+  return parseJSON(response.text);
 };
 
-/**
- * @deprecated Use generateImagePrompt + generateImageFromPrompt instead
- */
-export const generateBrandAsset = async (
+export const analyzeStyleReference = async (imageBase64: string): Promise<string> => {
+  const base64Data = imageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+  const response = await retry(async () => ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: {
+      parts: [
+        { inlineData: { mimeType: 'image/png', data: base64Data } },
+        { text: "Analyze visual style details." }
+      ]
+    },
+    config: { systemInstruction: STYLE_ANALYSIS_INSTRUCTION }
+  }));
+  return response.text?.trim() || "Clean, modern style.";
+};
+
+export const generateImagePrompt = async (
   style: string,
   analysis: AnalysisResult,
   appName: string,
-  assetType: 'LOGO' | 'ICON'
+  assetType: 'ICON' | 'BANNER',
+  brandIdentity?: BrandIdentity | null,
+  styleReferenceDescription?: string
 ): Promise<string> => {
+  const isBanner = assetType === 'BANNER';
+  let colorContext = "";
+  if (brandIdentity) {
+    colorContext = `STRICT COLOR PALETTE: [${brandIdentity.colors.primary1}, ${brandIdentity.colors.primary2}, ${brandIdentity.colors.accent1}, ${brandIdentity.colors.accent2}, ${brandIdentity.colors.highlight_neon}]. USE A PLAIN SOLID COLOR OR EXTREMELY SUBTLE GRADIENT FOR THE BACKGROUND.`;
+  }
+
+  /**
+   * Brainstorms a creative subject (mascot, shape, or symbol) based on the app's brand and category.
+   */
+  const brainstormIconSubject = async (analysis: AnalysisResult, appName: string, iconStyle: string): Promise<string> => {
+    const isMascot = iconStyle === 'Modern Mascot';
+    const isAbstract = iconStyle === 'Abstract';
+
+    const subjectType = isMascot ? "mascot character head (animal, robot, or stylized object)" :
+      isAbstract ? "abstract geometric shape or high-tech symbol" :
+        "specific 3D geometric shape or object";
+
+    const prompt = `Brainstorm ONE ${subjectType} for a premium app logo.
+App Name: "${appName}"
+Category: ${analysis.category}
+Tone: ${analysis.tone}
+Keywords: ${analysis.primaryKeywords?.join(', ')}
+
+Rules:
+1. OUTPUT THE SUBJECT NAME ONLY (e.g., "abstract cybernetic node", "minimalist geometric fox", "interconnected data sphere").
+2. **AVOID CLICHÉS**: Do NOT use common tropes like "lightbulbs" for ideas, "rockets" for speed, "magnifying glasses" for search, or "shields" for security.
+3. **High Uniqueness**: Brainstorm a metaphor that is distinct to this specific app's nuance.
+4. **Style Alignment**: If Abstract/Geometric, avoid literal objects (like "book" or "pen"); focus on concepts (like "flow", "structure", "harmony").
+`;
+
+    try {
+      const response = await retry(async () => ai.models.generateContent({
+        model: TEXT_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction: `You are a creative brand strategist. Output only the short name of the ${isMascot ? 'character' : 'shape'}.`,
+          temperature: 0.8
+        }
+      }));
+      return response.text?.trim() || (isMascot ? "friendly creature" : "geometric shape");
+    } catch (e) {
+      console.error("Icon subject brainstorming failed", e);
+      return isMascot ? "friendly mascot" : "modern shape";
+    }
+  };
+  let styleInstruction = "";
+  if (!isBanner) {
+    switch (style) {
+      case 'Modern Mascot':
+        const chosenMascot = await brainstormIconSubject(analysis, appName, style);
+        styleInstruction = `STYLE: Cute modern mascot of a ${chosenMascot}. extreme close-up face view, character has a zoomed-in look. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. large circular eyes with spark highlights, tiny mouth and nose, simplified geometry. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish, friendly playful emotion. designed for high-visibility at small sizes.`;
+        break;
+      case '3D Geometric':
+      case 'Fun 3D Shapes':
+      case '3D Shapes':
+        const chosenShape = await brainstormIconSubject(analysis, appName, style);
+        styleInstruction = `STYLE: Premium 3D render of a ${chosenShape}. extreme close-up view, zoomed-in look. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish, high-end feel. designed for high-visibility at small sizes.`;
+        break;
+      case '3D Letter':
+        styleInstruction = `STYLE: Sculptural 3D render of a letter "${appName.charAt(0).toUpperCase()}". extreme close-up and zoomed-in look, letterform is oversized. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. bold and authoritative but friendly. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish. designed for high-visibility at small sizes.`;
+        break;
+      case 'Modern Minimalist':
+        styleInstruction = `STYLE: CLEAN HIGH-IMPACT SWISS VECTOR. HUGE simplified symbol for ${analysis.category}. friendly and cute. flat with soft glow.`;
+        break;
+      case 'Abstract':
+        const chosenAbstract = await brainstormIconSubject(analysis, appName, style);
+        styleInstruction = `STYLE: An abstract render made from a ${chosenAbstract}. extreme close-up composition, zoomed-in look, oversized shape. Soft 3D gradient style (flat-3D hybrid), inflated rounded shapes, pastel lighting. spark highlights, simplified geometry. high-tech and friendly. Single dominant color with tonal gradients, no outlines, no texture, no grain, clean vector finish.`;
+        break;
+      default:
+        styleInstruction = `STYLE: MODERN APP ICON. central logo mark.`;
+    }
+  } else {
+    styleInstruction = `STYLE: STORE TILES. wide composition. use brand colors ${brandIdentity?.colors.primary1}, ${brandIdentity?.colors.primary2}. negative space.`;
+  }
+
+  const referencePriority = styleReferenceDescription ? `CRITICAL: PRIORITIZE THE VISUAL STYLE, LIGHTING, AND COMPOSITION OF THE ATTACHED REFERENCE IMAGE. THIS IS MORE PROMINENT THAN THE TEXT DESCRIPTION.` : "";
+  const prompt = `Role: Expert App Icon Designer. Asset: ${assetType}. App: ${appName}. ${colorContext} ${styleInstruction} ${referencePriority} ${styleReferenceDescription || ''} OUTPUT RAW PROMPT ONLY.`;
+
+  const response = await retry(async () => ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: prompt,
+    config: { systemInstruction: DESIGNER_INSTRUCTION }
+  }));
+
+  return response.text || `A ${style} icon for ${appName}`;
+};
+
+export const generateImageFromPrompt = async (prompt: string, aspectRatio: '1:1' | '16:9' = '1:1', referenceImageBase64?: string | null): Promise<string> => {
+  try {
+    const parts: any[] = [{ text: prompt }];
+
+    // Add reference image if provided
+    if (referenceImageBase64) {
+      const base64Data = referenceImageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
+      parts.push({
+        inlineData: {
+          mimeType: 'image/png', // Assume PNG/JPEG for simplicity as per common upload types
+          data: base64Data
+        }
+      });
+    }
+
+    const response = await retry(async () => ai.models.generateContent({
+      model: IMAGE_MODEL,
+      contents: { parts },
+      config: {
+        // @ts-ignore
+        imageConfig: { aspectRatio }
+      }
+    }));
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+    }
+  } catch (e) {
+    console.error("failed", e);
+  }
+  throw new Error("No image generated");
+};
+
+export const generateBrandAsset = async (style: string, analysis: AnalysisResult, appName: string, assetType: 'LOGO' | 'ICON'): Promise<string> => {
   const prompt = await generateImagePrompt(style, analysis, appName, 'ICON');
   return generateImageFromPrompt(prompt, '1:1');
 };

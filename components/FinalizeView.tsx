@@ -39,9 +39,12 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
         // 1. Text Assets (Only for full download)
         if (!subset) {
             const textFolder = zip.folder("text_assets");
+            textFolder?.file("product_title.txt", project.selectedName?.name || "");
             textFolder?.file("short_description.txt", project.selectedShortDescription?.text || "");
-            textFolder?.file("store_listing.md", project.fullDescription || "");
-            textFolder?.file("privacy_policy.md", project.privacyPolicy || "");
+            // Save as .txt because we switched to Plain Text logic for descriptions
+            textFolder?.file("long_description.txt", project.fullDescription || "");
+            textFolder?.file("privacy_policy.txt", project.privacyPolicy || "");
+            textFolder?.file("keywords.txt", (project.analysis?.primaryKeywords || []).join(', '));
 
             const metadata = {
                 name: project.selectedName?.name,
@@ -49,7 +52,9 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
                 category: project.analysis?.category,
                 keywords: project.analysis?.primaryKeywords,
                 features: project.analysis?.coreFeatures,
-                audience: project.analysis?.targetAudience
+                audience: project.analysis?.targetAudience,
+                tone: project.analysis?.tone,
+                painPoints: project.analysis?.customerPsychology
             };
             textFolder?.file("metadata.json", JSON.stringify(metadata, null, 2));
         }
@@ -68,32 +73,29 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
             });
         }
 
-        // 3. Store Graphics (Banners, Tiles, Screenshots)
+        // 3. Store Graphics (Banners, Tiles, Screenshots) -> ONLY RENDERED
         if (!subset || subset === 'BANNERS') {
             const promoFolder = zip.folder("promo_graphics");
 
             // Marquee
             project.marquees.forEach((m, i) => {
-                const url = m.renderedUrl || m.previewUrl;
-                if (url) {
-                    promoFolder?.file(`marquee_${i + 1}.jpg`, base64ToBlob(url));
+                if (m.renderedUrl) {
+                    promoFolder?.file(`marquee_${i + 1}.jpg`, base64ToBlob(m.renderedUrl));
                 }
             });
 
             // Small Tile
             project.smallTiles.forEach((t, i) => {
-                const url = t.renderedUrl || t.previewUrl;
-                if (url) {
-                    promoFolder?.file(`small_promo_${i + 1}.jpg`, base64ToBlob(url));
+                if (t.renderedUrl) {
+                    promoFolder?.file(`small_promo_${i + 1}.jpg`, base64ToBlob(t.renderedUrl));
                 }
             });
 
             // Screenshots
             const screenshotsFolder = zip.folder("screenshots");
             project.screenshots.forEach((s, i) => {
-                const url = s.renderedUrl || s.previewUrl;
-                if (url && url.startsWith('data:')) {
-                    screenshotsFolder?.file(`screenshot_${i + 1}.jpg`, base64ToBlob(url));
+                if (s.renderedUrl) {
+                    screenshotsFolder?.file(`screenshot_${i + 1}.jpg`, base64ToBlob(s.renderedUrl));
                 }
             });
         }
@@ -110,12 +112,16 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
         }
     };
 
+    // ... (rest of helper functions)
+
     const handleDownloadSingle = (content: string | Blob, name: string) => {
         if (typeof content === 'string') {
             if (content.startsWith('data:')) {
                 saveAs(base64ToBlob(content) as any, name);
             } else {
-                saveAs(content, name);
+                // If string is just text, create a blob
+                const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+                saveAs(blob, name);
             }
         } else {
             saveAs(content as any, name);
@@ -129,6 +135,9 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
         </div>
     );
 
+    // ... (rest of helper functions used above)
+
+    // --- RENDER ---
     return (
         <div className="flex flex-col gap-8 pb-20">
 
@@ -179,6 +188,21 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
                         <SectionHeader icon="description" title="Store Listings" />
 
                         <div className="space-y-6">
+                            {/* Product Name */}
+                            <div>
+                                <div className="flex justify-between items-center mb-1">
+                                    <label className="text-xs font-bold text-gray-400 uppercase">Product Name</label>
+                                    <button onClick={() => copyToClipboard(project.selectedName?.name || '', 'Name Copied')} className="text-primary hover:text-white text-xs flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                        {copyFeedback === 'Name Copied' ? 'Copied!' : 'Copy'}
+                                    </button>
+                                </div>
+                                <div className="bg-surface-darker p-3 rounded-lg text-sm text-white font-bold border border-border-dark flex justify-between items-center">
+                                    {project.selectedName?.name}
+                                    <span className="text-[10px] text-gray-500 font-normal">{project.selectedName?.tagline}</span>
+                                </div>
+                            </div>
+
                             {/* Short Desc */}
                             <div>
                                 <div className="flex justify-between items-center mb-1">
@@ -198,7 +222,7 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
                                 <div className="flex justify-between items-center mb-1">
                                     <label className="text-xs font-bold text-gray-400 uppercase">Long Description</label>
                                     <div className="flex gap-2">
-                                        <button onClick={() => handleDownloadSingle(new Blob([project.fullDescription || ''], { type: 'text/markdown' }), 'store_listing.md')} className="text-gray-400 hover:text-white text-xs" title="Download MD">
+                                        <button onClick={() => handleDownloadSingle(project.fullDescription || '', 'long_description.txt')} className="text-gray-400 hover:text-white text-xs" title="Download Text">
                                             <span className="material-symbols-outlined text-[14px]">download</span>
                                         </button>
                                         <button onClick={() => copyToClipboard(project.fullDescription || '', 'Long Desc Copied')} className="text-primary hover:text-white text-xs flex items-center gap-1">
@@ -217,10 +241,15 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
                             <div>
                                 <div className="flex justify-between items-center mb-1">
                                     <label className="text-xs font-bold text-gray-400 uppercase">Privacy Policy</label>
-                                    <button onClick={() => copyToClipboard(project.privacyPolicy || '', 'Privacy Copied')} className="text-primary hover:text-white text-xs flex items-center gap-1">
-                                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
-                                        {copyFeedback === 'Privacy Copied' ? 'Copied!' : 'Copy'}
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleDownloadSingle(project.privacyPolicy || '', 'privacy_policy.txt')} className="text-gray-400 hover:text-white text-xs" title="Download Text">
+                                            <span className="material-symbols-outlined text-[14px]">download</span>
+                                        </button>
+                                        <button onClick={() => copyToClipboard(project.privacyPolicy || '', 'Privacy Copied')} className="text-primary hover:text-white text-xs flex items-center gap-1">
+                                            <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                            {copyFeedback === 'Privacy Copied' ? 'Copied!' : 'Copy'}
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="bg-surface-darker p-3 rounded-lg text-sm text-gray-500 border border-border-dark h-24 overflow-hidden relative">
                                     {project.privacyPolicy || "No policy generated."}
@@ -243,7 +272,13 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
                                 <span className="text-sm text-white font-medium text-right">{project.analysis?.tone}</span>
                             </div>
                             <div>
-                                <span className="text-sm text-gray-400 block mb-2">Keywords</span>
+                                <div className="flex justify-between items-center mb-1">
+                                    <span className="text-sm text-gray-400">Keywords</span>
+                                    <button onClick={() => copyToClipboard((project.analysis?.primaryKeywords || []).join(', '), 'Keywords Copied')} className="text-primary hover:text-white text-xs flex items-center gap-1">
+                                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                                        {copyFeedback === 'Keywords Copied' ? 'Copied!' : 'Copy'}
+                                    </button>
+                                </div>
                                 <div className="flex flex-wrap gap-1">
                                     {project.analysis?.primaryKeywords.map(k => (
                                         <span key={k} className="text-[10px] bg-blue-500/10 text-blue-300 px-2 py-1 rounded">{k}</span>
@@ -286,87 +321,113 @@ const FinalizeView: React.FC<FinalizeViewProps> = ({ project }) => {
                                 <h3 className="text-lg font-bold text-white">Store Graphics</h3>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => handleDownloadPackage('ICONS')} className="text-xs bg-surface-darker hover:bg-white hover:text-black border border-border-dark px-3 py-1 rounded transition-colors">
+                                <button onClick={() => handleDownloadPackage('ICONS')} className="h-9 px-4 text-xs font-bold bg-primary text-black hover:bg-white rounded-lg transition-colors flex items-center gap-2 shadow-lg">
+                                    <span className="material-symbols-outlined text-[18px]">download</span>
                                     Download Icons
                                 </button>
-                                <button onClick={() => handleDownloadPackage('BANNERS')} className="text-xs bg-surface-darker hover:bg-white hover:text-black border border-border-dark px-3 py-1 rounded transition-colors">
+                                <button onClick={() => handleDownloadPackage('BANNERS')} className="h-9 px-4 text-xs font-bold bg-primary text-black hover:bg-white rounded-lg transition-colors flex items-center gap-2 shadow-lg">
+                                    <span className="material-symbols-outlined text-[18px]">download</span>
                                     Download Banners
                                 </button>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            {/* Main Icon */}
-                            <div className="aspect-square bg-surface-darker rounded-xl border border-border-dark p-4 flex flex-col items-center justify-center gap-2 relative group">
-                                {project.generatedAssets.find(a => a.usage === 'ICON_MAIN') && (
-                                    <>
-                                        <img src={project.generatedAssets.find(a => a.usage === 'ICON_MAIN')?.url} className="w-2/3 h-2/3 object-contain drop-shadow-xl" alt="Main Icon" />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
-                                            <button onClick={() => handleDownloadSingle(project.generatedAssets.find(a => a.usage === 'ICON_MAIN')!.url, 'icon_main.png')} className="bg-white text-black p-2 rounded-full">
-                                                <span className="material-symbols-outlined">download</span>
-                                            </button>
+                        <div className="space-y-6">
+                            {/* 1. Icon Pack Section */}
+                            <div>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Icon Pack</h4>
+                                <div className="flex flex-wrap items-end gap-4 p-4 bg-surface-darker rounded-xl border border-border-dark">
+                                    {/* Main Icon */}
+                                    {project.generatedAssets.find(a => a.usage === 'ICON_MAIN') && (
+                                        <div className="flex flex-col items-center gap-2">
+                                            <div className="size-24 bg-surface-dark rounded-xl p-2 border border-border-dark relative group">
+                                                <img src={project.generatedAssets.find(a => a.usage === 'ICON_MAIN')?.url} className="w-full h-full object-contain" alt="1024px" />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                                                    <button onClick={() => handleDownloadSingle(project.generatedAssets.find(a => a.usage === 'ICON_MAIN')!.url, 'icon_1024.png')} className="bg-white text-black p-1.5 rounded-full hover:scale-110 transition-transform">
+                                                        <span className="material-symbols-outlined text-[16px]">download</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400">1024px</span>
                                         </div>
-                                    </>
-                                )}
-                                <span className="text-[10px] text-gray-500 absolute bottom-2">Main Icon</span>
+                                    )}
+
+                                    {/* Separator */}
+                                    <div className="w-px h-16 bg-border-dark mx-2"></div>
+
+                                    {/* Resized Icons */}
+                                    {project.generatedAssets.filter(a => a.usage === 'ICON_RESIZED').sort((a, b) => parseInt(b.dimensions || '0') - parseInt(a.dimensions || '0')).map(icon => (
+                                        <div key={icon.id} className="flex flex-col items-center gap-2">
+                                            <div className="bg-surface-dark rounded-lg p-1 border border-border-dark flex items-center justify-center relative group" style={{ width: Math.max(48, parseInt(icon.dimensions || '48') / 2) + 'px', height: Math.max(48, parseInt(icon.dimensions || '48') / 2) + 'px' }}>
+                                                <img src={icon.url} style={{ width: '100%' }} alt={icon.dimensions} />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                                                    <button onClick={() => handleDownloadSingle(icon.url, `icon_${icon.dimensions}.png`)} className="bg-white text-black p-1 rounded-full hover:scale-110 transition-transform">
+                                                        <span className="material-symbols-outlined text-[12px]">download</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] text-gray-400">{icon.dimensions}px</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
 
-                            {/* Small Tile Preview */}
-                            <div className="col-span-2 bg-surface-darker rounded-xl border border-border-dark overflow-hidden relative group">
-                                {project.smallTiles.length > 0 && (
-                                    <>
-                                        <img src={project.smallTiles[0].renderedUrl || project.smallTiles[0].previewUrl} className="w-full h-full object-cover" alt="Small Tile" />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button onClick={() => handleDownloadSingle(project.smallTiles[0].renderedUrl || project.smallTiles[0].previewUrl, 'small_tile.jpg')} className="bg-white text-black p-2 rounded-full">
-                                                <span className="material-symbols-outlined">download</span>
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-                                <span className="text-[10px] text-white bg-black/50 px-2 py-1 rounded absolute bottom-2 left-2 backdrop-blur">Small Promo</span>
-                            </div>
+                            {/* 2. Banners & Screenshots */}
+                            <div>
+                                <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Promotional Assets</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 
-                            {/* Marquee Preview */}
-                            <div className="col-span-1 md:col-span-2 lg:col-span-4 aspect-[5/2] bg-surface-darker rounded-xl border border-border-dark overflow-hidden relative group">
-                                {project.marquees.length > 0 && (
-                                    <>
-                                        <img src={project.marquees[0].renderedUrl || project.marquees[0].previewUrl} className="w-full h-full object-cover" alt="Marquee" />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button onClick={() => handleDownloadSingle(project.marquees[0].renderedUrl || project.marquees[0].previewUrl, 'marquee.jpg')} className="bg-white text-black p-2 rounded-full">
-                                                <span className="material-symbols-outlined">download</span>
-                                            </button>
+                                    {/* Small Tile Preview (Rendered Only - ALL) */}
+                                    {project.smallTiles.filter(t => t.renderedUrl).map((t, i) => (
+                                        <div key={i} className="col-span-2 bg-surface-darker rounded-xl border border-border-dark overflow-hidden relative group">
+                                            <img src={t.renderedUrl} className="w-full h-full object-cover" alt={`Small Tile ${i + 1}`} />
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <button onClick={() => handleDownloadSingle(t.renderedUrl!, `small_tile_${i + 1}.jpg`)} className="bg-white text-black p-2 rounded-full hover:scale-110 transition-transform">
+                                                    <span className="material-symbols-outlined">download</span>
+                                                </button>
+                                            </div>
+                                            <span className="text-[10px] text-white bg-black/50 px-2 py-1 rounded absolute bottom-2 left-2 backdrop-blur">Small Promo {i + 1}</span>
                                         </div>
-                                    </>
-                                )}
-                                <span className="text-[10px] text-white bg-black/50 px-2 py-1 rounded absolute bottom-2 left-2 backdrop-blur">Marquee</span>
+                                    ))}
+
+                                    {/* Marquee Preview (Rendered Only - ALL) */}
+                                    {project.marquees.filter(m => m.renderedUrl).map((m, i) => (
+                                        <div key={i} className="col-span-1 md:col-span-2 lg:col-span-4 aspect-[5/2] bg-surface-darker rounded-xl border border-border-dark overflow-hidden relative group">
+                                            <img src={m.renderedUrl} className="w-full h-full object-cover" alt={`Marquee ${i + 1}`} />
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <button onClick={() => handleDownloadSingle(m.renderedUrl!, `marquee_${i + 1}.jpg`)} className="bg-white text-black p-2 rounded-full hover:scale-110 transition-transform">
+                                                    <span className="material-symbols-outlined">download</span>
+                                                </button>
+                                            </div>
+                                            <span className="text-[10px] text-white bg-black/50 px-2 py-1 rounded absolute bottom-2 left-2 backdrop-blur">Marquee {i + 1}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Screenshots Gallery */}
+                    {/* Screenshots Gallery (Rendered Only) */}
                     <div className="bg-surface-dark border border-border-dark rounded-xl p-6">
-                        <SectionHeader icon="screenshot_monitor" title="Screenshots" />
+                        <SectionHeader icon="screenshot_monitor" title="Screenshots (Final)" />
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                            {project.screenshots.map((shot, idx) => (
-                                (shot.renderedUrl || shot.previewUrl) && (
-                                    <div key={idx} className="aspect-[16/10] bg-surface-darker rounded-lg border border-border-dark overflow-hidden relative group">
-                                        <img src={shot.renderedUrl || shot.previewUrl} className="w-full h-full object-cover" alt={`Screenshot ${idx}`} />
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <button onClick={() => handleDownloadSingle(shot.renderedUrl || shot.previewUrl, `screenshot_${idx + 1}.jpg`)} className="bg-white text-black p-2 rounded-full">
-                                                <span className="material-symbols-outlined">download</span>
-                                            </button>
-                                        </div>
+                            {project.screenshots.filter(s => s.renderedUrl).map((shot, idx) => (
+                                <div key={idx} className="aspect-[16/10] bg-surface-darker rounded-lg border border-border-dark overflow-hidden relative group">
+                                    <img src={shot.renderedUrl} className="w-full h-full object-cover" alt={`Screenshot ${idx}`} />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <button onClick={() => handleDownloadSingle(shot.renderedUrl!, `screenshot_${idx + 1}.jpg`)} className="bg-white text-black p-2 rounded-full">
+                                            <span className="material-symbols-outlined">download</span>
+                                        </button>
                                     </div>
-                                )
+                                </div>
                             ))}
-                            {project.screenshots.length === 0 && (
+                            {project.screenshots.filter(s => s.renderedUrl).length === 0 && (
                                 <div className="col-span-full py-8 text-center text-gray-500 text-sm italic">
-                                    No screenshots generated in Studio.
+                                    No final rendered screenshots available. Please complete the Store Graphics step.
                                 </div>
                             )}
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
